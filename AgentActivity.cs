@@ -1,5 +1,8 @@
-﻿internal class AgentActivity
+﻿namespace ACSforMCS 
 {
-    public string? Type { get; set; }
-    public string? Text { get; set; }   
+    internal class AgentActivity
+    {
+        public string? Type { get; set; }
+        public string? Text { get; set; }   
+    }
 }
