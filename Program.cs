@@ -21,10 +21,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 // Register configuration
 builder.Services.Configure<AppSettings>(builder.Configuration);
-builder.Services.Configure<VoiceOptions>(options => {
-    options.VoiceName = "en-US-NancyNeural";
-    options.Language = "en-US";
-});
+builder.Services.Configure<VoiceOptions>(builder.Configuration.GetSection("Voice"));
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
