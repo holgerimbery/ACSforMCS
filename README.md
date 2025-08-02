@@ -175,9 +175,9 @@ This section guides you through starting the application and testing your teleph
 Your telephony integration is now operational, allowing callers to interact with your Copilot Studio agent through traditional phone calls. The system converts speech to text, processes it through your intelligent agent, and delivers synthesized speech responses back to the caller.
 
 
-## Cloud-Native Architecture
+## Cloud-Native Architecture (work in progress)
 
-The solution leverages modern cloud-native principles to ensure scalability, resilience, and maintainability:
+The solution leverages modern cloud-native principles to ensure scalability, resilience, and maintainability.
 
 For production-ready deployment instructions, refer to [Azure Deployment Guide for ACSforMCS.md](Azure%20Deployment%20Guide%20for%20ACSforMCS.md).
 
