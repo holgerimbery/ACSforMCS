@@ -4,58 +4,91 @@ using Azure.Messaging.EventGrid;
 using Azure.Messaging.EventGrid.SystemEvents;
 using Microsoft.AspNetCore.Mvc;
 using Newtonsoft.Json;
-using System.Net.WebSockets;
-using System.Text;
-using System.Text.Json;
-using System.Text.Json.Nodes;
-using JsonException = Newtonsoft.Json.JsonException;
-using System.Net.Http.Headers;
-using ACSforMCS;
 using System.Collections.Concurrent;
-using System.Text.RegularExpressions;
+using System.Net.Http.Headers;
+using System.Text.Json.Nodes;
+using ACSforMCS;
+using ACSforMCS.Configuration;
+using ACSforMCS.Services;
+using ACSforMCS.Middleware;
+using ACSforMCS.HealthChecks;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
+using Microsoft.Extensions.Logging.Console; // Added for ConsoleLoggerProvider
+using Polly;
+using Polly.Extensions.Http;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Register configuration
+builder.Services.Configure<AppSettings>(builder.Configuration);
+builder.Services.Configure<VoiceOptions>(options => {
+    options.VoiceName = "en-US-NancyNeural";
+    options.Language = "en-US";
+});
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
-//Get ACS Connection String from appsettings.json
-var acsConnectionString = builder.Configuration.GetValue<string>("AcsConnectionString");
-ArgumentNullException.ThrowIfNullOrEmpty(acsConnectionString);
+// Get settings from configuration
+var appSettings = new AppSettings();
+builder.Configuration.Bind(appSettings);
 
-//Call Automation Client
-var client = new CallAutomationClient(connectionString: acsConnectionString);
+// Validate critical settings
+ArgumentNullException.ThrowIfNullOrEmpty(appSettings.AcsConnectionString, nameof(appSettings.AcsConnectionString));
+ArgumentNullException.ThrowIfNullOrEmpty(appSettings.CognitiveServiceEndpoint, nameof(appSettings.CognitiveServiceEndpoint));
+ArgumentNullException.ThrowIfNullOrEmpty(appSettings.DirectLineSecret, nameof(appSettings.DirectLineSecret));
 
-//Get the Cognitive Services endpoint from appsettings.json
-var cognitiveServicesEndpoint = builder.Configuration.GetValue<string>("CognitiveServiceEndpoint");
-ArgumentNullException.ThrowIfNullOrEmpty(cognitiveServicesEndpoint);
-
-//Get Agent Phone number from appsettings.json
-var agentPhonenumber = builder.Configuration.GetValue<string>("AgentPhoneNumber");
-ArgumentNullException.ThrowIfNullOrEmpty(agentPhonenumber);
-
-// Get Direct Line Secret from appsettings.json
-var directLineSecret = builder.Configuration.GetValue<string>("DirectLineSecret");
-
-ArgumentNullException.ThrowIfNullOrEmpty(directLineSecret);
-
-// Create an HTTP client to communicate with the Direct Line service
-HttpClient httpClient = new HttpClient();
-httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", directLineSecret);
-
+// Handle base URI from environment variable or config
 var baseUri = Environment.GetEnvironmentVariable("VS_TUNNEL_URL")?.TrimEnd('/');
-//var baseUri = builder.Configuration.GetValue<string>("BaseUri")?.TrimEnd('/');
-
 if (string.IsNullOrEmpty(baseUri))
 {
-    baseUri = builder.Configuration.GetValue<string>("BaseUri")?.TrimEnd('/');
+    baseUri = appSettings.BaseUri?.TrimEnd('/');
+    ArgumentNullException.ThrowIfNullOrEmpty(baseUri, nameof(appSettings.BaseUri));
 }
-var baseWssUri = baseUri.StartsWith("https://") ? baseUri.Substring("https://".Length) : baseUri;
+appSettings.BaseUri = baseUri;
 
-ConcurrentDictionary<string, CallContext> CallStore = new();
+// Register dependencies
+builder.Services.AddSingleton(new CallAutomationClient(connectionString: appSettings.AcsConnectionString));
+builder.Services.AddSingleton<ConcurrentDictionary<string, CallContext>>(new ConcurrentDictionary<string, CallContext>());
+
+// Set up HttpClient with Polly retry policies
+builder.Services.AddHttpClient("DirectLine", client => {
+    client.BaseAddress = new Uri(Constants.DirectLineBaseUrl);
+    
+    // Ensure proper authorization header format
+    client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", appSettings.DirectLineSecret.Trim());
+    
+    // Add additional headers that might be required
+    client.DefaultRequestHeaders.Add("User-Agent", "ACSforMCS/1.0");
+    client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+    
+    // Set a reasonable timeout
+    client.Timeout = TimeSpan.FromSeconds(30);
+})
+.AddTransientHttpErrorPolicy(policy => 
+    policy.WaitAndRetryAsync(3, retryAttempt => 
+        TimeSpan.FromSeconds(Math.Pow(2, retryAttempt))));
+
+// Register services
+builder.Services.AddSingleton<CallAutomationService>();
+
+// Add health checks
+builder.Services.AddHealthChecks()
+    .AddCheck<DirectLineHealthCheck>("directline_api", tags: new[] { "ready" });
+
+// Add filters for logging - simpler approach
+builder.Logging.AddFilter("System.Net.Http.HttpClient", LogLevel.Warning);
+builder.Logging.AddFilter("Microsoft.AspNetCore.Hosting.Diagnostics", LogLevel.Warning);
+builder.Logging.AddFilter("System.Net.Http.HttpClient.DirectLine.LogicalHandler", LogLevel.Warning);
 
 var app = builder.Build();
+
+// Register services for direct access
+var callAutomationService = app.Services.GetRequiredService<CallAutomationService>();
+var callStore = app.Services.GetRequiredService<ConcurrentDictionary<string, CallContext>>();
+var client = app.Services.GetRequiredService<CallAutomationClient>();
+var logger = app.Services.GetRequiredService<ILogger<Program>>();
 
 app.MapGet("/", () => "Hello Azure Communication Services, here is Copilot Studio!");
 
@@ -65,7 +98,7 @@ app.MapPost("/api/incomingCall", async (
 {
     foreach (var eventGridEvent in eventGridEvents)
     {
-        logger.LogInformation($"Incoming Call event received : {JsonConvert.SerializeObject(eventGridEvent)}");
+        logger.LogInformation("Incoming Call event received : {EventGridEvent}", JsonConvert.SerializeObject(eventGridEvent));
 
         // Handle system events
         if (eventGridEvent.TryGetSystemEventData(out object eventData))
@@ -80,36 +113,51 @@ app.MapPost("/api/incomingCall", async (
                 return Results.Ok(responseData);
             }
         }
-        var jsonObject = JsonNode.Parse(eventGridEvent.Data).AsObject();
-        var incomingCallContext = (string)jsonObject["incomingCallContext"];
-
-        var callbackUri = new Uri(baseUri + $"/api/calls/{Guid.NewGuid()}");
         
-        var answerCallOptions = new AnswerCallOptions(incomingCallContext, callbackUri)
-        {
-            CallIntelligenceOptions = new CallIntelligenceOptions()
-            {
-                CognitiveServicesEndpoint = new Uri(cognitiveServicesEndpoint)
-            },
-            TranscriptionOptions = new TranscriptionOptions("en-US")
-            {
-                TransportUri = new Uri($"wss://{baseWssUri}/ws"),
-                TranscriptionTransport = StreamingTransport.Websocket,
-                EnableIntermediateResults = true,
-                StartTranscription = true
-            }
-        };
-
         try
         {
+            // Fixed: Add null checking for JSON parsing
+            var jsonNode = JsonNode.Parse(eventGridEvent.Data);
+            if (jsonNode == null)
+            {
+                logger.LogError("Failed to parse event data as JSON");
+                continue;
+            }
+
+            var jsonObject = jsonNode.AsObject();
+            var incomingCallContext = (string?)jsonObject["incomingCallContext"];
+
+            if (string.IsNullOrEmpty(incomingCallContext))
+            {
+                logger.LogError("Missing incomingCallContext in event data");
+                continue;
+            }
+
+            var callbackUri = callAutomationService.GetCallbackUri();
+            
+            var answerCallOptions = new AnswerCallOptions(incomingCallContext, callbackUri)
+            {
+                CallIntelligenceOptions = new CallIntelligenceOptions()
+                {
+                    CognitiveServicesEndpoint = new Uri(appSettings.CognitiveServiceEndpoint)
+                },
+                TranscriptionOptions = new TranscriptionOptions("en-US")
+                {
+                    TransportUri = callAutomationService.GetTranscriptionTransportUri(),
+                    TranscriptionTransport = StreamingTransport.Websocket,
+                    EnableIntermediateResults = true,
+                    StartTranscription = true
+                }
+            };
+
             AnswerCallResult answerCallResult = await client.AnswerCallAsync(answerCallOptions);
 
             var correlationId = answerCallResult?.CallConnectionProperties.CorrelationId;
-            logger.LogInformation($"Correlation Id: {correlationId}");
+            logger.LogInformation("Correlation Id: {CorrelationId}", correlationId);
 
             if (correlationId != null)
             {
-                CallStore[correlationId] = new CallContext()
+                callStore[correlationId] = new CallContext()
                 {
                     CorrelationId = correlationId
                 };
@@ -117,7 +165,7 @@ app.MapPost("/api/incomingCall", async (
         }
         catch (Exception ex)
         {
-            logger.LogError($"Answer call exception: {ex.Message}. Stack trace: {ex.StackTrace}");
+            logger.LogError(ex, "Answer call exception: {Message}", ex.Message);
         }
     }
     return Results.Ok();
@@ -131,7 +179,7 @@ app.MapPost("/api/calls/{contextId}", async (
     foreach (var cloudEvent in cloudEvents)
     {
         CallAutomationEventBase @event = CallAutomationEventParser.Parse(cloudEvent);
-        logger.LogInformation($"Event received: {JsonConvert.SerializeObject(@event)}");
+        logger.LogInformation("Event received: {CloudEvent}", JsonConvert.SerializeObject(@event));
 
         var callConnection = client.GetCallConnection(@event.CallConnectionId);
         var callMedia = callConnection?.GetCallMedia();
@@ -142,20 +190,56 @@ app.MapPost("/api/calls/{contextId}", async (
             return Results.BadRequest($"Call objects failed to get for connection id {@event.CallConnectionId}.");
         }
 
-        if (@event is CallConnected callConnected)
+        if (@event is CallConnected)
         {
-            var conversation = await StartConversationAsync();
-            var conversationId = conversation.ConversationId;
-            if (CallStore.ContainsKey(correlationId))
+            try
             {
-                CallStore[correlationId].ConversationId = conversationId;
+                Conversation? conversation = null;
+                
+                try
+                {
+                    // Try the regular method first
+                    conversation = await callAutomationService.StartConversationAsync();
+                }
+                catch (HttpRequestException ex) when (ex.Message.Contains("403"))
+                {
+                    // If we get a 403, try the alternative method with token
+                    logger.LogWarning("Regular StartConversationAsync failed with 403, trying token method");
+                    conversation = await callAutomationService.StartConversationWithTokenAsync();
+                }
+                
+                if (conversation == null || string.IsNullOrEmpty(conversation.ConversationId))
+                {
+                    throw new InvalidOperationException("Failed to get valid conversation");
+                }
+                
+                var conversationId = conversation.ConversationId;
+                if (callStore.ContainsKey(correlationId))
+                {
+                    callStore[correlationId].ConversationId = conversationId;
+                }
+
+                // Start listening for Agent responses asynchronously
+                var cts = new CancellationTokenSource();
+                callAutomationService.RegisterTokenSource(correlationId, cts);
+                
+                // Fixed: Add null check for StreamUrl
+                if (string.IsNullOrEmpty(conversation.StreamUrl))
+                {
+                    logger.LogError("StreamUrl is null or empty, cannot listen to bot");
+                }
+                else
+                {
+                    _ = Task.Run(() => callAutomationService.ListenToBotWebSocketAsync(
+                        conversation.StreamUrl, callConnection, cts.Token));
+                }
+
+                await callAutomationService.SendMessageAsync(conversationId, "Hi");
             }
-
-            // Start listening for Agent responses asynchronously
-            var cts = new CancellationTokenSource();
-            Task.Run(() => ListenToBotWebSocketAsync(conversation.StreamUrl, callConnection, cts.Token, logger));
-
-            await SendMessageAsync(conversationId, "Hi");
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Error processing CallConnected event: {Message}", ex.Message);
+            }
         }
 
         if (@event is PlayFailed)
@@ -170,326 +254,26 @@ app.MapPost("/api/calls/{contextId}", async (
 
         if (@event is TranscriptionStarted transcriptionStarted)
         {
-            logger.LogInformation($"Transcription started: {transcriptionStarted.OperationContext}");
+            logger.LogInformation("Transcription started: {OperationContext}", transcriptionStarted.OperationContext);
         }
 
         if (@event is TranscriptionStopped transcriptionStopped)
         {
-            logger.LogInformation($"Transcription stopped: {transcriptionStopped.OperationContext}");
+            logger.LogInformation("Transcription stopped: {OperationContext}", transcriptionStopped.OperationContext);
         }
         
-        if(@event is CallDisconnected callDisconnected)
+        if (@event is CallDisconnected)
         {
             logger.LogInformation("Call Disconnected");
-            _ = CallStore.TryRemove(@event.CorrelationId, out CallContext context);
+            callAutomationService.CleanupCall(correlationId);
         }
     }
     return Results.Ok();
 }).Produces(StatusCodes.Status200OK);
 
-// setup web socket for stream in
+// Setup web socket handling
 app.UseWebSockets();
-app.Use(async (context, next) =>
-{
-    if (context.Request.Path == "/ws")
-    {
-        var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
-        
-        if (context.WebSockets.IsWebSocketRequest)
-        {
-            // Extract correlation ID and call connection ID
-            var correlationId = context.Request.Headers["x-ms-call-correlation-id"].FirstOrDefault();
-            var callConnectionId = context.Request.Headers["x-ms-call-connection-id"].FirstOrDefault();
-            var callMedia = callConnectionId != null ? client.GetCallConnection(callConnectionId)?.GetCallMedia() : null;
-            
-            logger.LogInformation($"WebSocket connection established - Correlation ID: {correlationId}, Call Connection ID: {callConnectionId}");
-            
-            string conversationId = null;
-            if (correlationId != null && CallStore.TryGetValue(correlationId, out var callContext))
-            {
-                conversationId = callContext.ConversationId;
-            }
-            else
-            {
-                logger.LogWarning($"No call context found for correlation ID: {correlationId}");
-            }
-
-            using var webSocket = await context.WebSockets.AcceptWebSocketAsync();
-            try
-            {
-                string partialData = "";
-
-                while (webSocket.State == WebSocketState.Open || webSocket.State == WebSocketState.CloseSent)
-                {
-                    byte[] receiveBuffer = new byte[4096];
-                    var cancellationToken = new CancellationTokenSource(TimeSpan.FromSeconds(1200)).Token;
-                    WebSocketReceiveResult receiveResult = await webSocket.ReceiveAsync(new ArraySegment<byte>(receiveBuffer), cancellationToken);
-
-                    if (receiveResult.MessageType != WebSocketMessageType.Close)
-                    {
-                        string data = Encoding.UTF8.GetString(receiveBuffer, 0, receiveResult.Count);
-
-                        try
-                        {
-                            if (receiveResult.EndOfMessage)
-                            {
-                                data = partialData + data;
-                                partialData = "";
-
-                                if (data != null)
-                                {
-                                    if (data.Contains("Intermediate"))
-                                    {
-                                        logger.LogDebug("Intermediate transcription received, canceling prompt");
-                                        if (callMedia != null)
-                                            await callMedia.CancelAllMediaOperationsAsync();
-                                    }
-                                    else
-                                    {
-                                        var streamingData = StreamingData.Parse(data);
-                                        if (streamingData is TranscriptionMetadata transcriptionMetadata)
-                                        {
-                                            callMedia = client.GetCallConnection(transcriptionMetadata.CallConnectionId)?.GetCallMedia();
-                                        }
-                                        if (streamingData is TranscriptionData transcriptionData)
-                                        {
-                                            logger.LogDebug($"Transcription data received: {transcriptionData.Text}");
-
-                                            if (transcriptionData.ResultState == TranscriptionResultState.Final)
-                                            {
-                                                if (conversationId == null && correlationId != null && 
-                                                    CallStore.TryGetValue(correlationId, out var ctx))
-                                                {
-                                                    conversationId = ctx.ConversationId;
-                                                }
-
-                                                if (!string.IsNullOrEmpty(conversationId))
-                                                {
-                                                    await SendMessageAsync(conversationId, transcriptionData.Text);
-                                                    logger.LogInformation($"Message sent to conversation: {transcriptionData.Text}");
-                                                }
-                                                else
-                                                {
-                                                    logger.LogWarning("Conversation Id is null, unable to send message");
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                            else
-                            {
-                                partialData = partialData + data;
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            logger.LogError($"WebSocket data processing error: {ex.Message}. Stack trace: {ex.StackTrace}");
-                        }
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                logger.LogError($"WebSocket connection error: {ex.Message}. Stack trace: {ex.StackTrace}");
-            }
-            finally
-            {
-                logger.LogInformation("WebSocket connection closed");
-            }
-        }
-        else
-        {
-            logger.LogWarning("Non-WebSocket request received at WebSocket endpoint");
-            context.Response.StatusCode = StatusCodes.Status400BadRequest;
-        }
-    }
-    else
-    {
-        await next(context);
-    }
-});
-
-
-async Task<Conversation> StartConversationAsync()
-{
-    var response = await httpClient.PostAsync("https://directline.botframework.com/v3/directline/conversations", null);
-    response.EnsureSuccessStatusCode();
-    var content = await response.Content.ReadAsStringAsync();
-    return JsonConvert.DeserializeObject<Conversation>(content);
-}
-
-async Task ListenToBotWebSocketAsync(string streamUrl, CallConnection callConnection, CancellationToken cancellationToken, ILogger logger)
-{
-    if (string.IsNullOrEmpty(streamUrl))
-    {
-        logger.LogWarning("WebSocket streaming is not enabled for this MCS Agent.");
-        return;
-    }
-
-    using (var webSocket = new ClientWebSocket())
-    {
-        try
-        {
-            await webSocket.ConnectAsync(new Uri(streamUrl), cancellationToken);
-            logger.LogInformation($"Connected to bot WebSocket at {streamUrl}");
-
-            var buffer = new byte[4096]; // Set the buffer size to 4096 bytes
-            var messageBuilder = new StringBuilder();
-
-            while (webSocket.State == WebSocketState.Open && !cancellationToken.IsCancellationRequested)
-            {
-                messageBuilder.Clear(); // Reset buffer for each new message
-                WebSocketReceiveResult result;
-                do
-                {
-                    result = await webSocket.ReceiveAsync(new ArraySegment<byte>(buffer), cancellationToken);
-                    messageBuilder.Append(Encoding.UTF8.GetString(buffer, 0, result.Count));
-
-                } while (!result.EndOfMessage); // Continue until we've received the full message
-
-                string rawMessage = messageBuilder.ToString();
-                var AgentActivity = ExtractLatestAgentActivity(rawMessage, logger);
-
-                if (AgentActivity.Type == "message")
-                {
-                    logger.LogInformation($"Playing Agent Response: {AgentActivity.Text}");
-                    await PlayToAllAsync(callConnection.GetCallMedia(), AgentActivity.Text);
-                }
-                else if (AgentActivity.Type == "endOfConversation")
-                {
-                    logger.LogInformation("End of Conversation signal received, hanging up call");
-                    await callConnection.HangUpAsync(true);
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            logger.LogError($"Bot WebSocket error: {ex.Message}. Stack trace: {ex.StackTrace}");
-        }
-        finally
-        {
-            if (webSocket.State == WebSocketState.Open)
-            {
-                try
-                {
-                    await webSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Closing", cancellationToken);
-                    logger.LogInformation("Bot WebSocket connection closed gracefully");
-                }
-                catch (Exception ex)
-                {
-                    logger.LogWarning($"Error during WebSocket closure: {ex.Message}");
-                }
-            }
-        }
-    }
-}
-
-async Task SendMessageAsync(string conversationId, string message)
-{
-    var messagePayload = new
-    {
-        type = "message",
-        from = new { id = "user1" },
-        text = message
-    };
-    string messageJson = JsonConvert.SerializeObject(messagePayload);
-    StringContent content = new StringContent(messageJson, Encoding.UTF8, "application/json");
-
-    var response = await httpClient.PostAsync($"https://directline.botframework.com/v3/directline/conversations/{conversationId}/activities", content);
-    response.EnsureSuccessStatusCode();
-}
-
-
-static AgentActivity ExtractLatestAgentActivity(string rawMessage, ILogger logger = null)
-{
-    try
-    {
-        using var doc = JsonDocument.Parse(rawMessage);
-
-        if (doc.RootElement.TryGetProperty("activities", out var activities) && activities.ValueKind == JsonValueKind.Array)
-        {
-            // Iterate in reverse order to get the latest message
-            for (int i = activities.GetArrayLength() - 1; i >= 0; i--)
-            {
-                var activity = activities[i];
-
-                if (activity.TryGetProperty("type", out var type))
-                {
-                    if (type.GetString() == "message")
-                    {
-                        if (activity.TryGetProperty("from", out var from) &&
-                            from.TryGetProperty("id", out var fromId) &&
-                            fromId.GetString() != "user1") // Ensure message is from Agent
-                        {
-                            if (activity.TryGetProperty("speak", out var speak))
-                            {
-                                logger?.LogDebug($"Voice content received: {speak.GetString()}");
-                                return new AgentActivity()
-                                {
-                                    Type = "message",
-                                    Text = RemoveReferences(speak.GetString())
-                                };
-                            }
-
-                            if (activity.TryGetProperty("text", out var text))
-                            {
-                                return new AgentActivity()
-                                {
-                                    Type = "message",
-                                    Text = RemoveReferences(text.GetString())
-                                };
-                            }
-                        }
-                    }
-                    else if(type.GetString() == "endOfConversation")
-                    {
-                        logger?.LogInformation("EndOfConversation activity received");
-                        return new AgentActivity()
-                        {
-                            Type = "endOfConversation"
-                        };
-                    }
-                }
-            }
-        }
-    }
-    catch (JsonException ex)
-    {
-        logger?.LogWarning($"Unexpected JSON format in agent activity: {ex.Message}");
-    }
-    
-    logger?.LogWarning("No valid agent activity found in message, returning default error response");
-    return new AgentActivity()
-    {
-        Type = "Error",
-        Text = "Sorry, Something went wrong"
-    };
-}
-
-static string RemoveReferences(string input)
-{
-    // Remove inline references like [1], [2], etc.
-    string withoutInlineRefs = Regex.Replace(input, @"\[\d+\]", "");
-
-    // Remove reference list at the end (lines starting with [number]:)
-    string withoutRefList = Regex.Replace(withoutInlineRefs, @"\n\[\d+\]:.*(\n|$)", "");
-
-    return withoutRefList.Trim();
-}
-
-async Task PlayToAllAsync(CallMedia callConnectionMedia, string message)
- {
-    var ssmlPlaySource = new SsmlSource($"<speak version=\"1.0\" xmlns=\"http://www.w3.org/2001/10/synthesis\" xml:lang=\"en-US\"><voice name=\"en-US-NancyNeural\">{message}</voice></speak>");
-
-    var playOptions = new PlayToAllOptions(ssmlPlaySource)
-    {
-        OperationContext = "Testing"
-    };
-
-    await callConnectionMedia.PlayToAllAsync(playOptions);
- }
-
+app.UseCallWebSockets(); // Use our custom middleware
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment() || app.Environment.IsProduction())
@@ -500,4 +284,8 @@ if (app.Environment.IsDevelopment() || app.Environment.IsProduction())
 
 app.UseAuthorization();
 app.MapControllers();
+
+// Add health check endpoint
+app.MapHealthChecks("/health");
+
 app.Run();
