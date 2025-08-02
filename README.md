@@ -106,9 +106,12 @@ if you are not in region europe, please remove "europe." from the directline.bot
       "CognitiveServiceEndpoint": "https://your-region.api.cognitive.microsoft.com/",
       "AgentPhoneNumber": "+1234567890",
       "DirectLineSecret": "your-directline-secret",
-      "BaseUri": "https://your-devtunnel-url/"
+      "BaseUri": "https://your-devtunnel-url/",
+      "Voice": {
+        "VoiceName": "en-US-NancyNeural",
+        "Language": "en-US"
+      }
     }
-s
     ```
 
 2. **Fill in the required values**:
