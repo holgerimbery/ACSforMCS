@@ -1,9 +1,9 @@
 # Azure Deployment Guide for ACSforMCS
 
-This guide outlines the steps to deploy ACSforMCS to Azure in a secure and stable way.
+This guide outlines the steps to deploy ACSforMCS to Azure securely and stably.
 
-replace all apperances of "acsformcs" in the configuration and scripts with an own name.
-replace AgentPhoneNumber in kayvaultsettings with your phonenumber
+Replace all appearances of "acsformcs" in the configuration and scripts with your own name.
+Replace AgentPhoneNumber in kayvaultsettings with your phone number
 
 ## 1. Infrastructure Setup
 
