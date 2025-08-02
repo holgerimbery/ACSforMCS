@@ -62,6 +62,11 @@ This section outlines the detailed setup process to get your telephony integrati
     ```bash
     dotnet restore
     ```
+### hint: 
+Constants.cs   
+DirectLineHealthCheck.cs    
+if you are not in region europe, please remove "europe." from the directline.botframework.com URI
+
 
 ### Azure DevTunnel Setup
 
@@ -170,38 +175,18 @@ This section guides you through starting the application and testing your teleph
 Your telephony integration is now operational, allowing callers to interact with your Copilot Studio agent through traditional phone calls. The system converts speech to text, processes it through your intelligent agent, and delivers synthesized speech responses back to the caller.
 
 
-## Future Roadmap: Cloud-Native Architecture
+## Cloud-Native Architecture (work in progress)
 
-We aim to develop a more robust and scalable cloud-native implementation of this solution utilizing Azure's serverless technologies. 
-The enhanced architecture will offer improved reliability and monitoring capabilities.
+The solution leverages modern cloud-native principles to ensure scalability, resilience, and maintainability.
 
-### Planned Enhancements
+For production-ready deployment instructions, refer to [Azure Deployment Guide for ACSforMCS.md](Azure%20Deployment%20Guide%20for%20ACSforMCS.md).
 
-1. **Telephony Enhancements**
+## Planned Enhancements
+
+**Telephony Enhancements**
     - DTMF Recognition
     - Call Forward to a Teams User
     - Call Forward to a PSTN User
       
-2. **Azure Functions Implementation**
-    - Replace the local application with stateless Azure Functions to handle incoming call events
-    - Implement durable functions for managing long-running call sessions and state management
-    - Create specialized function triggers for different stages of the call lifecycle (initiation, transcription, response generation)
-
-3. **Advanced Monitoring & Observability**
-    - Integrate Application Insights for comprehensive telemetry collection
-    - Develop custom dashboards for real-time call analytics and performance metrics
-    - Implement structured logging with correlation IDs across all components
-
-4. **Quality Assurance Framework**
-    - Build a comprehensive unit test suite for all business logic components
-    - Create integration test scenarios to validate end-to-end call flows
-    - Implement automated deployment validation tests in CI/CD pipelines
-
-5. **Administration Portal**
-    - Design a web-based management interface for call monitoring and system configuration
-    - Implement real-time call status visualization and intervention capabilities
-    - Create configuration management for telephony settings, agent routing rules, and voice characteristics
-
-
-### Want to Contribute?
+## Want to Contribute?
 Helping hands are welcome to enhance this telephony integration capability. If you're interested in contributing, please reach out to us with your ideas and PRs. 
