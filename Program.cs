@@ -51,7 +51,7 @@ if (string.IsNullOrEmpty(baseUri))
 {
     baseUri = builder.Configuration.GetValue<string>("BaseUri")?.TrimEnd('/');
 }
-var baseWssUri = baseUri.Split("https://")[1];
+var baseWssUri = baseUri.StartsWith("https://") ? baseUri.Substring("https://".Length) : baseUri;
 
 ConcurrentDictionary<string, CallContext> CallStore = new();
 
