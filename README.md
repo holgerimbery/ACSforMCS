@@ -63,8 +63,8 @@ This section outlines the detailed setup process to get your telephony integrati
     dotnet restore
     ```
 ### hint: 
-Constants.cs
-DirectLineHealthCheck.cs 
+Constants.cs   
+DirectLineHealthCheck.cs    
 if you are not in region europe, please remove "europe." from the directline.botframework.com URI
 
 
