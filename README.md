@@ -23,7 +23,7 @@ For an enterprise-grade implementation, we suggest using Dynamics 365 Customer S
 This project is based on and inspired by architectural samples and technical guidance provided by Microsoft. We extend our gratitude to the Microsoft engineering teams for their comprehensive documentation and sample code that served as the foundation for this integration. The approach showcased here leverages best practices recommended by Microsoft for connecting Azure Communication Services with conversational AI platforms like Copilot Studio. Special thanks to the Azure Communication Services and Microsoft Copilot Studio product teams for their excellent technical resources that made this implementation possible.
 
 The underlying concepts and design patterns follow established architectural principles for cloud-native telephony integrations with conversational AI systems. While we've built upon these foundations, we've tailored the solution to address specific requirements and use cases for voice-enabled customer service experiences.
-(link to original codebase)[https://github.com/Azure-Samples/communication-services-dotnet-quickstarts/tree/main/CallAutomation_MCS_Sample]. (We are happy to sync back our changes)
+[link to original codebase](https://github.com/Azure-Samples/communication-services-dotnet-quickstarts/tree/main/CallAutomation_MCS_Sample]. (We are happy to sync back our changes)
 
 
 
