@@ -186,10 +186,10 @@ For production-ready deployment instructions, refer to [Azure Deployment Guide f
 
 ## Planned Enhancements
 
-**Telephony Enhancements**
-    - DTMF Recognition
-    - Call Forward to a Teams User
-    - Call Forward to a PSTN User
+**Telephony Enhancements**   
+    - DTMF Recognition   
+    - Call Forward to a Teams User   
+    - Call Forward to a PSTN User   
       
 ## Want to Contribute?
 Helping hands are welcome to enhance this telephony integration capability. If you're interested in contributing, please reach out to us with your ideas and PRs. 
