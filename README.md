@@ -15,6 +15,8 @@ This solution provides an alternative communication channel for Copilot Studio a
 enabling organizations to extend their conversational AI capabilities to traditional phone systems
 while leveraging the natural language understanding and dialog management features of Microsoft Copilot Studio.
 
+![](./assets/screen0.jpg)
+
 ## Discaimer
 For an enterprise-grade implementation, we suggest using Dynamics 365 Customer Service or Dynamics 365 Contact Center (while working with a non-Microsoft CRM solution).
 
