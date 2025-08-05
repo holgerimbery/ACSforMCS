@@ -108,10 +108,13 @@ New-AzKeyVault -Name $keyVaultName -ResourceGroupName $resourceGroup -Location $
 $secrets = @{
     "CognitiveServiceEndpoint" = "https://cogserviceacs.cognitiveservices.azure.com/"
     "AcsConnectionString" = "endpoint=https://youracs.communication.azure.com/;accesskey=youraccesskey"
-    "BaseUri" = "https://your-devtunnel-url/"
     "DirectLineSecret" = "your-directline-secret"
     "AgentPhoneNumber" = "+1234567890"
 }
+
+# Add environment-specific BaseUri values
+$secrets["BaseUri-Development"] = "https://your-devtunnel-url"
+$secrets["BaseUri-Production"] = "https://app-your-resource-base-name.azurewebsites.net"
 
 foreach ($key in $secrets.Keys) {
     $secureValue = ConvertTo-SecureString $secrets[$key] -AsPlainText -Force
@@ -120,19 +123,29 @@ foreach ($key in $secrets.Keys) {
 ```
 
 2. **Create appsettings.json files**
-    - Create `appsettings.json` based on the sample file:
+    - Create `appsettings.json` based on the sample file "appsettings.json.sample":
       ```bash
       cp appsettings.json.sample appsettings.json
       ```
-    - Edit the file and replace the KeyVault URI:
+    - Look at the file:
       ```json
-      {
-         "KeyVault": {
-            "VaultUri": "https://your-key-vault-name.vault.azure.net/"
-         }
-      }
+        "KeyVault": {
+            "Endpoint": ""
+        },
       ```
-    - Similarly, create and update `appsettings.Development.json` and  `appsettings.Development.json` with the same KeyVault URI
+    There is no need to expose your keyvault URI in the Code, just use the already existing lines in the "appsettings.json.sample" file. We store the URI as User Secret in .NET.
+
+    ```powershell
+    dotnet user-secrets init --project c:\<your-path>\GitHub\ACSforMCS\ACSforMCS.csproj
+
+    dotnet user-secrets set "KeyVault:Endpoint" "https://{your uri}/" --project c:\<your-path>\ACSforMCS\ACSforMCS.csproj
+
+    ```
+    - Create a "appsettings.Production.json" based on the "appsettings.Production.json.sample" and find the keyvault endpoint configured as a Github Secret.
+    - Go to your GitHub repository
+    - Navigate to Settings > Secrets and variables > Actions
+    - Create a new repository secret named "KEY_VAULT_ENDPOINT" with the value "https://{your-keyvault-uri}/"
+
 
 ### Copilot Studio Configuration
 
