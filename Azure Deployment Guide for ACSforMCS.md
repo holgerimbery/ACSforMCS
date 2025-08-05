@@ -33,20 +33,7 @@ Set-AzWebApp -ResourceGroupName $resourceGroup -Name "app-your-resource-base-nam
 $appIdentity = (Get-AzWebApp -ResourceGroupName $resourceGroup -Name "app-your-resource-base-name").Identity.PrincipalId
 Set-AzKeyVaultAccessPolicy -VaultName "kv-your-resource-base-name" -ObjectId $appIdentity -PermissionsToSecrets get,list
 ```
-Configure App Settings with Key Vault References
-```powershell
-# Configure app settings to use Key Vault references
-$settings = @{
-    "AcsConnectionString" = "@Microsoft.KeyVault(SecretUri=https://kv-your-resource-base-name.vault.azure.net/secrets/AcsConnectionString/)"
-    "DirectLineSecret" = "@Microsoft.KeyVault(SecretUri=https://kv-your-resource-base-name.vault.azure.net/secrets/DirectLineSecret/)"
-    "CognitiveServiceEndpoint" = "@Microsoft.KeyVault(SecretUri=https://kv-your-resource-base-name.vault.azure.net/secrets/CognitiveServiceEndpoint/)"
-    "AgentPhoneNumber" = "+yourphonenumber" # Not sensitive, can be directly set
-    "BaseUri" = "https://app-your-resource-base-name.azurewebsites.net/api/incomingCall"
-    "ASPNETCORE_ENVIRONMENT" = "Production"
-}
 
-Set-AzWebApp -ResourceGroupName $resourceGroup -Name "app-your-resource-base-name" -AppSettings $settings
-```
 
 Configure TLS/SSL
 ```powershell
