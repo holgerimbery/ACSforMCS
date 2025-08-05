@@ -17,6 +17,7 @@ using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Logging.Console; // Added for ConsoleLoggerProvider
 using Polly;
 using Polly.Extensions.Http;
+using Azure.Security.KeyVault.Secrets;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -58,8 +59,26 @@ ArgumentNullException.ThrowIfNullOrEmpty(appSettings.DirectLineSecret, nameof(ap
 var baseUri = Environment.GetEnvironmentVariable("VS_TUNNEL_URL")?.TrimEnd('/');
 if (string.IsNullOrEmpty(baseUri))
 {
-    baseUri = appSettings.BaseUri?.TrimEnd('/');
-    ArgumentNullException.ThrowIfNullOrEmpty(baseUri, nameof(appSettings.BaseUri));
+    var environment = builder.Environment.EnvironmentName; // Gets "Development" or "Production"
+    var secretName = $"BaseUri-{environment}";
+    
+    try
+    {
+        // Attempt to get the environment-specific BaseUri from Key Vault
+        var keyVaultUri = new Uri(builder.Configuration["KeyVault:VaultUri"]);
+        var secretClient = new SecretClient(keyVaultUri, new DefaultAzureCredential());
+        var secret = secretClient.GetSecret(secretName);
+        baseUri = secret.Value.Value?.TrimEnd('/');
+        Console.WriteLine($"Loaded BaseUri from Key Vault secret '{secretName}'");
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"Warning: Failed to load {secretName} from Key Vault: {ex.Message}");
+        // Fall back to regular BaseUri if environment-specific one is not found
+        baseUri = appSettings.BaseUri?.TrimEnd('/');
+    }
+    
+    ArgumentNullException.ThrowIfNullOrEmpty(baseUri, "BaseUri not found in Key Vault or configuration");
 }
 appSettings.BaseUri = baseUri;
 

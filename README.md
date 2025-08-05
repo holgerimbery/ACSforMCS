@@ -108,10 +108,13 @@ New-AzKeyVault -Name $keyVaultName -ResourceGroupName $resourceGroup -Location $
 $secrets = @{
     "CognitiveServiceEndpoint" = "https://cogserviceacs.cognitiveservices.azure.com/"
     "AcsConnectionString" = "endpoint=https://youracs.communication.azure.com/;accesskey=youraccesskey"
-    "BaseUri" = "https://your-devtunnel-url/"
     "DirectLineSecret" = "your-directline-secret"
     "AgentPhoneNumber" = "+1234567890"
 }
+
+# Add environment-specific BaseUri values
+$secrets["BaseUri-Development"] = "https://your-devtunnel-url"
+$secrets["BaseUri-Production"] = "https://app-your-resource-base-name.azurewebsites.net"
 
 foreach ($key in $secrets.Keys) {
     $secureValue = ConvertTo-SecureString $secrets[$key] -AsPlainText -Force
