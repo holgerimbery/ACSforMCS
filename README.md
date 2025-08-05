@@ -173,7 +173,7 @@ This section guides you through starting the application and testing your teleph
 
 2. **Launch the application**
     ```bash
-    dotnet run
+    dotnet run --environment Development
     ```
     The application will start locally and be accessible through your DevTunnel URL.
 
