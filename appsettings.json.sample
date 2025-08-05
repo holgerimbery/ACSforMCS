@@ -7,7 +7,7 @@
   },
   "AllowedHosts": "*",
   "KeyVault": {
-    "Endpoint": "https://your-key-vault-name.vault.azure.net/"
+    "Endpoint": ""
   },
   "Voice": {
     "VoiceName": "en-US-NancyNeural",

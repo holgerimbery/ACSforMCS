@@ -6,7 +6,8 @@
     }
   },
   "KeyVault": {
-    "Endpoint": "https://your-key-vault-name.vault.azure.net/"
+      "KeyVault": {
+    "Endpoint": "#{KeyVault:Endpoint}#"
   },
   "Voice": {
     "VoiceName": "en-US-NancyNeural",
