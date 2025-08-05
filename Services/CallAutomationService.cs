@@ -198,10 +198,36 @@ namespace ACSforMCS.Services
             }
 
             using var webSocket = new ClientWebSocket();
+            webSocket.Options.KeepAliveInterval = TimeSpan.FromSeconds(30); // Add keep-alive interval
+            
             try
             {
                 await webSocket.ConnectAsync(new Uri(streamUrl), cancellationToken);
                 _logger.LogInformation("Connected to bot WebSocket at {StreamUrl}", streamUrl);
+
+                // Set up heartbeat timer
+                using var heartbeatTimer = new Timer(
+                    async _ => {
+                        try {
+                            if (webSocket.State == WebSocketState.Open && !cancellationToken.IsCancellationRequested)
+                            {
+                                var heartbeatMsg = Encoding.UTF8.GetBytes("{\"type\":\"ping\"}");
+                                await webSocket.SendAsync(
+                                    new ArraySegment<byte>(heartbeatMsg), 
+                                    WebSocketMessageType.Text, 
+                                    true, 
+                                    cancellationToken);
+                                _logger.LogDebug("Sent heartbeat ping");
+                            }
+                        }
+                        catch (Exception ex) when (!(ex is TaskCanceledException || ex is OperationCanceledException))
+                        {
+                            _logger.LogWarning(ex, "Error sending heartbeat: {Message}", ex.Message);
+                        }
+                    },
+                    null,
+                    TimeSpan.FromSeconds(45),  // Initial delay
+                    TimeSpan.FromSeconds(45)); // Interval
 
                 var buffer = new byte[4096];
                 var messageBuilder = new StringBuilder();
@@ -216,11 +242,25 @@ namespace ACSforMCS.Services
                         {
                             result = await webSocket.ReceiveAsync(new ArraySegment<byte>(buffer), cancellationToken);
                             messageBuilder.Append(Encoding.UTF8.GetString(buffer, 0, result.Count));
-
                         } while (!result.EndOfMessage); // Continue until we've received the full message
 
                         string rawMessage = messageBuilder.ToString();
+                        
+                        // Skip empty or malformed messages
+                        if (string.IsNullOrWhiteSpace(rawMessage) || !rawMessage.Contains("activities"))
+                        {
+                            _logger.LogDebug("Received empty or non-activity message from WebSocket");
+                            continue;
+                        }
+                        
                         var agentActivity = ExtractLatestAgentActivity(rawMessage);
+
+                        // Don't play error responses to the user
+                        if (agentActivity.Type == Constants.ErrorActivityType)
+                        {
+                            _logger.LogWarning("Skipping error response: {ErrorText}", agentActivity.Text);
+                            continue;
+                        }
 
                         if (agentActivity.Type == Constants.MessageActivityType && !string.IsNullOrEmpty(agentActivity.Text))
                         {
@@ -233,24 +273,10 @@ namespace ACSforMCS.Services
                             await callConnection.HangUpAsync(true, cancellationToken: cancellationToken);
                         }
                     }
-                    catch (TaskCanceledException)
+                    catch (Exception ex) when (!(ex is TaskCanceledException || ex is OperationCanceledException))
                     {
-                        // This is expected when the call is disconnected and tasks are canceled
-                        _logger.LogInformation("WebSocket operation canceled - this is normal during disconnection");
-                        break; // Exit the loop
-                    }
-                    catch (OperationCanceledException)
-                    {
-                        // Also expected during cancellation
-                        _logger.LogInformation("WebSocket operation canceled - this is normal during disconnection");
-                        break; // Exit the loop
-                    }
-                    catch (Exception ex) when (ex.InnerException is IOException || 
-                                               ex.InnerException is SocketException)
-                    {
-                        // Network errors that can happen during disconnection
-                        _logger.LogInformation("WebSocket network connection closed: {Message}", ex.Message);
-                        break;
+                        // Log unexpected exceptions but don't terminate the loop
+                        _logger.LogError(ex, "Error processing WebSocket message: {Message}", ex.Message);
                     }
                 }
             }
@@ -307,67 +333,125 @@ namespace ACSforMCS.Services
         {
             try
             {
+                // Log a sample of the raw message (truncate if too long)
+                string sampleMessage = rawMessage.Length > 500 ? 
+                    rawMessage.Substring(0, 500) + "..." : 
+                    rawMessage;
+                _logger.LogDebug("Attempting to extract agent activity from message: {SampleMessage}", sampleMessage);
+                
                 using var doc = JsonDocument.Parse(rawMessage);
 
-                if (doc.RootElement.TryGetProperty("activities", out var activities) && 
-                    activities.ValueKind == JsonValueKind.Array)
+                if (!doc.RootElement.TryGetProperty("activities", out var activities))
                 {
-                    // Iterate in reverse order to get the latest message
-                    for (int i = activities.GetArrayLength() - 1; i >= 0; i--)
+                    _logger.LogWarning("No 'activities' property found in the message");
+                    goto ReturnDefault;
+                }
+                
+                if (activities.ValueKind != JsonValueKind.Array)
+                {
+                    _logger.LogWarning("The 'activities' property is not an array");
+                    goto ReturnDefault;
+                }
+
+                int activityCount = activities.GetArrayLength();
+                _logger.LogDebug("Found {Count} activities in the message", activityCount);
+                
+                if (activityCount == 0)
+                {
+                    _logger.LogWarning("The activities array is empty");
+                    goto ReturnDefault;
+                }
+
+                // Iterate in reverse order to get the latest message
+                for (int i = activities.GetArrayLength() - 1; i >= 0; i--)
+                {
+                    var activity = activities[i];
+
+                    if (!activity.TryGetProperty("type", out var type))
                     {
-                        var activity = activities[i];
+                        _logger.LogDebug("Activity at index {Index} has no 'type' property", i);
+                        continue;
+                    }
 
-                        if (activity.TryGetProperty("type", out var type))
+                    string? typeValue = type.GetString();
+                    _logger.LogDebug("Activity at index {Index} has type: {Type}", i, typeValue);
+
+                    if (typeValue == Constants.MessageActivityType)
+                    {
+                        if (!activity.TryGetProperty("from", out var from))
                         {
-                            if (type.GetString() == Constants.MessageActivityType)
-                            {
-                                if (activity.TryGetProperty("from", out var from) &&
-                                    from.TryGetProperty("id", out var fromId) &&
-                                    fromId.GetString() != Constants.DefaultUserName) // Ensure message is from Agent
-                                {
-                                    if (activity.TryGetProperty("speak", out var speak))
-                                    {
-                                        _logger.LogDebug("Voice content received: {SpeakContent}", speak.GetString());
-                                        return new AgentActivity()
-                                        {
-                                            Type = Constants.MessageActivityType,
-                                            Text = RemoveReferences(speak.GetString() ?? string.Empty)
-                                        };
-                                    }
-
-                                    if (activity.TryGetProperty("text", out var text))
-                                    {
-                                        return new AgentActivity()
-                                        {
-                                            Type = Constants.MessageActivityType,
-                                            Text = RemoveReferences(text.GetString() ?? string.Empty)
-                                        };
-                                    }
-                                }
-                            }
-                            else if(type.GetString() == Constants.EndOfConversationActivityType)
-                            {
-                                _logger.LogInformation("EndOfConversation activity received");
-                                return new AgentActivity()
-                                {
-                                    Type = Constants.EndOfConversationActivityType
-                                };
-                            }
+                            _logger.LogDebug("Message activity at index {Index} has no 'from' property", i);
+                            continue;
                         }
+
+                        if (!from.TryGetProperty("id", out var fromId))
+                        {
+                            _logger.LogDebug("Message activity at index {Index} has no 'from.id' property", i);
+                            continue;
+                        }
+
+                        string? fromIdValue = fromId.GetString();
+                        _logger.LogDebug("Message activity at index {Index} is from: {FromId}", i, fromIdValue);
+
+                        if (fromIdValue == Constants.DefaultUserName)
+                        {
+                            _logger.LogDebug("Message activity at index {Index} is from user, not agent", i);
+                            continue; // Skip messages from the user
+                        }
+
+                        // Try to get the speak content first
+                        if (activity.TryGetProperty("speak", out var speak))
+                        {
+                            string? speakContent = speak.GetString();
+                            _logger.LogDebug("Voice content received: {SpeakContent}", speakContent);
+                            return new AgentActivity()
+                            {
+                                Type = Constants.MessageActivityType,
+                                Text = RemoveReferences(speakContent ?? string.Empty)
+                            };
+                        }
+
+                        // Fall back to text content
+                        if (activity.TryGetProperty("text", out var text))
+                        {
+                            string? textContent = text.GetString();
+                            _logger.LogDebug("Text content received: {TextContent}", textContent);
+                            return new AgentActivity()
+                            {
+                                Type = Constants.MessageActivityType,
+                                Text = RemoveReferences(textContent ?? string.Empty)
+                            };
+                        }
+
+                        _logger.LogDebug("Message activity at index {Index} has neither 'speak' nor 'text' property", i);
+                    }
+                    else if(typeValue == Constants.EndOfConversationActivityType)
+                    {
+                        _logger.LogInformation("EndOfConversation activity received");
+                        return new AgentActivity()
+                        {
+                            Type = Constants.EndOfConversationActivityType
+                        };
                     }
                 }
+
+            ReturnDefault:
+                _logger.LogWarning("No valid agent activity found in message, returning default error response");
+                return new AgentActivity()
+                {
+                    Type = Constants.ErrorActivityType,
+                    Text = "Sorry, Something went wrong"
+                };
             }
             catch (JsonException ex)
             {
                 _logger.LogWarning(ex, "Unexpected JSON format in agent activity: {Message}", ex.Message);
+                return new AgentActivity()
+                {
+                    Type = Constants.ErrorActivityType,
+                    Text = "Sorry, I couldn't process that response"
+                };
             }
-            
-            _logger.LogWarning("No valid agent activity found in message, returning default error response");
-            return new AgentActivity()
-            {
-                Type = Constants.ErrorActivityType,
-                Text = "Sorry, Something went wrong"
-            };
         }
 
         private static string RemoveReferences(string input)

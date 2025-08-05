@@ -1,4 +1,5 @@
 using Azure.Communication.CallAutomation;
+using Azure.Identity;
 using Azure.Messaging;
 using Azure.Messaging.EventGrid;
 using Azure.Messaging.EventGrid.SystemEvents;
@@ -18,6 +19,23 @@ using Polly;
 using Polly.Extensions.Http;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Configure Azure Key Vault
+string keyVaultEndpoint = builder.Configuration["KeyVault:Endpoint"];
+if (!string.IsNullOrEmpty(keyVaultEndpoint))
+{
+    // Add Azure Key Vault configuration provider
+    builder.Configuration.AddAzureKeyVault(
+        new Uri(keyVaultEndpoint),
+        new DefaultAzureCredential());
+    
+    // Log that Key Vault configuration is being used
+    Console.WriteLine("Azure Key Vault configuration provider added");
+}
+else
+{
+    Console.WriteLine("WARNING: Key Vault endpoint not configured, using local configuration values");
+}
 
 // Register configuration
 builder.Services.Configure<AppSettings>(builder.Configuration);

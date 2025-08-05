@@ -6,11 +6,9 @@
     }
   },
   "AllowedHosts": "*",
-  "CognitiveServiceEndpoint": "COGNITIVE_SERVICE_ENDPOINT",
-  "AcsConnectionString": "ACS_CONNECTION_STRING",
-  "BaseUri": "https://your-devtunnel-url/api/incomingCall",
-  "DirectLineSecret": "DIRECT_LINE_SECRET",
-  "AgentPhoneNumber": "AGENT_PHONE_NUMBER",
+  "KeyVault": {
+    "Endpoint": "https://your-key-vault-name.vault.azure.net/"
+  },
   "Voice": {
     "VoiceName": "en-US-NancyNeural",
     "Language": "en-US"
