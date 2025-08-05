@@ -5,6 +5,7 @@ This guide outlines the steps to deploy your-resource-base-name to Azure in a se
 replace all apperances of "your-resource-base-name" in the configuration and scripts with an own name.
 replace AgentPhoneNumber in keyvault settings with your phonenumber
 
+
 ## 1. Infrastructure Setup
 
 ### Azure App Service

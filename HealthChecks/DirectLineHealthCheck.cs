@@ -24,6 +24,7 @@ namespace ACSforMCS.HealthChecks
                 httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _directLineSecret);
                 
                 var response = await httpClient.GetAsync(
+                    //"https://directline.botframework.com/v3/directline/tokens/ping", 
                     "https://europe.directline.botframework.com/v3/directline/tokens/ping", 
                     cancellationToken);
 
