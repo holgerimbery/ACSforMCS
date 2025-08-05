@@ -93,15 +93,15 @@ if you are not in region europe, please remove "europe." from the directline.bot
 ### Configuration Setup
 
 1. **Create an Azure Keyvault and add your configuration to it**   
-replace the string "csformcs" with your own values yiu used to setup your resources on Azure
+replace the string "your-resource-base-name" with your own values you used to setup your resources on Azure
 
 ```powershell
 # Create a resource group if you don't have one already
-$resourceGroup = "rg-acsformcs-prod"
+$resourceGroup = "rg-your-resource-base-name-prod"
 $location = "westeurope"
 
 # Create a Key Vault
-$keyVaultName = "kv-acsformcs"
+$keyVaultName = "kv-your-resource-base-name"
 New-AzKeyVault -Name $keyVaultName -ResourceGroupName $resourceGroup -Location $location
 
 # Add the required secrets
@@ -143,7 +143,6 @@ foreach ($key in $secrets.Keys) {
     - Go to settings and select Security
     - Deactivate Authentication 
     - Copy a secret from the Web Channel Security tab.
-    - Copy the secret to your `appsettings.json` file
 
 2. **Design conversation flow**
     - Create appropriate topics in your agent to handle phone interactions
