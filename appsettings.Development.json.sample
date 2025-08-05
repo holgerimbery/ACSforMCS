@@ -5,7 +5,6 @@
       "Microsoft.AspNetCore": "Warning"
     }
   },
-  "AllowedHosts": "*",
   "KeyVault": {
     "Endpoint": "https://your-key-vault-name.vault.azure.net/"
   },

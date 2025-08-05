@@ -92,33 +92,49 @@ if you are not in region europe, please remove "europe." from the directline.bot
 
 ### Configuration Setup
 
-1. **Create or update appsettings.json**
-    Create an `appsettings.json` file in the project root with the following structure, you can use the provided sample `appsettings.json.sample` as a starting point:
+1. **Create an Azure Keyvault and add your configuration to it**   
+replace the string "csformcs" with your own values yiu used to setup your resources on Azure
 
-    ```json
-    {
-      "Logging": {
-        "LogLevel": {
-          "Default": "Information",
-          "Microsoft.AspNetCore": "Warning"
-        }
-      },
-      "AllowedHosts": "*",
-      "AcsConnectionString": "your-acs-connection-string",
-      "CognitiveServiceEndpoint": "https://your-region.api.cognitive.microsoft.com/",
-      "AgentPhoneNumber": "+1234567890",
-      "DirectLineSecret": "your-directline-secret",
-      "BaseUri": "https://your-devtunnel-url/"
-    }
-s
-    ```
+```powershell
+# Create a resource group if you don't have one already
+$resourceGroup = "rg-acsformcs-prod"
+$location = "westeurope"
 
-2. **Fill in the required values**:
-    - `AcsConnectionString`: Found in your ACS resource under "Keys" in Azure portal
-    - `CognitiveServiceEndpoint`: The endpoint URL for your Cognitive Services resource
-    - `AgentPhoneNumber`: The ACS phone number you provisioned (format: +1XXXXXXXXXX)
-    - `DirectLineSecret`: Generated in your Copilot Studio agent's "Channels" > "DirectLine" settings
-    - `BaseUri`: Your Azure DevTunnel URL from the previous step
+# Create a Key Vault
+$keyVaultName = "kv-acsformcs"
+New-AzKeyVault -Name $keyVaultName -ResourceGroupName $resourceGroup -Location $location
+
+# Add the required secrets
+$secrets = @{
+    "CognitiveServiceEndpoint" = "https://cogserviceacs.cognitiveservices.azure.com/"
+    "AcsConnectionString" = "endpoint=https://youracs.communication.azure.com/;accesskey=youraccesskey"
+    "BaseUri" = "https://your-devtunnel-url/"
+    "DirectLineSecret" = "your-directline-secret"
+    "AgentPhoneNumber" = "+1234567890"
+}
+
+foreach ($key in $secrets.Keys) {
+    $secureValue = ConvertTo-SecureString $secrets[$key] -AsPlainText -Force
+    Set-AzKeyVaultSecret -VaultName $keyVaultName -Name $key -SecretValue $secureValue
+}
+
+2. **Create appsettings.json files**
+    - Create `appsettings.json` based on the sample file:
+      ```bash
+      cp appsettings.json.sample appsettings.json
+      ```
+    - Edit the file and replace the KeyVault URI:
+      ```json
+      {
+         "KeyVault": {
+            "VaultUri": "https://your-key-vault-name.vault.azure.net/"
+         }
+      }
+      ```
+    - Similarly, create and update `appsettings.Development.json` and  `appsettings.Development.json` with the same KeyVault URI
+
+
+```
 
 ### Copilot Studio Configuration
 

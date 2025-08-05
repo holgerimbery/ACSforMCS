@@ -1,0 +1,12 @@
+{
+  "Logging": {
+    "LogLevel": {
+      "Default": "Warning",
+      "Microsoft.AspNetCore": "Error"
+    }
+  },
+  "Voice": {
+    "VoiceName": "en-US-NancyNeural",
+    "Language": "en-US"
+  }
+}
