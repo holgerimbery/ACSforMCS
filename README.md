@@ -117,6 +117,7 @@ foreach ($key in $secrets.Keys) {
     $secureValue = ConvertTo-SecureString $secrets[$key] -AsPlainText -Force
     Set-AzKeyVaultSecret -VaultName $keyVaultName -Name $key -SecretValue $secureValue
 }
+```
 
 2. **Create appsettings.json files**
     - Create `appsettings.json` based on the sample file:
@@ -132,9 +133,6 @@ foreach ($key in $secrets.Keys) {
       }
       ```
     - Similarly, create and update `appsettings.Development.json` and  `appsettings.Development.json` with the same KeyVault URI
-
-
-```
 
 ### Copilot Studio Configuration
 
