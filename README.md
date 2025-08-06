@@ -11,11 +11,14 @@ The application creates a voice-based customer service experience by:
 4. Transforming the agent's responses into spoken audio using SSML (Speech Synthesis Markup Language)
 5. Delivering the synthesized speech back to the caller
 
-This solution provides an alternative communication channel for Copilot Studio agents,
+This solution provides an alternative communication channel for Copilot Studio agents.
 enabling organizations to extend their conversational AI capabilities to traditional phone systems
 while leveraging the natural language understanding and dialog management features of Microsoft Copilot Studio.
 
 ![](./assets/screen0.jpg)
+
+## Documentation of the Code
+[Documentation](./code_documentation.md) for those who are interested in.
 
 ## Discaimer
 For an enterprise-grade implementation, we suggest using Dynamics 365 Customer Service or Dynamics 365 Contact Center (while working with a non-Microsoft CRM solution).
@@ -229,5 +232,3 @@ For production-ready deployment instructions, refer to [Azure Deployment Guide f
 ## Want to Contribute?
 Helping hands are welcome to enhance this telephony integration capability. If you're interested in contributing, please reach out to us with your ideas and PRs. 
 
-## Documentation of the code
-[Documentation](./code_documentation.md)
