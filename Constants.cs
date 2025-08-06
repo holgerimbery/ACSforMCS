@@ -31,10 +31,11 @@ namespace ACSforMCS
         /// 
         /// This URL is used to start conversations, send messages, and obtain WebSocket stream URLs
         /// for real-time bot communication.
+        /// Use standard endpoint for non-European regions.
+        /// public const string DirectLineBaseUrl = "https://directline.botframework.com/v3/directline/";
         /// </summary>
         public const string DirectLineBaseUrl = "https://europe.directline.botframework.com/v3/directline/";
-
-        /// <summary>
+                /// <summary>
         /// Default user identifier used in Bot Framework activities to represent the caller.
         /// 
         /// This identifier is used when:
