@@ -7,6 +7,7 @@ namespace ACSforMCS.Configuration
         public string AgentPhoneNumber { get; set; } = string.Empty;
         public string DirectLineSecret { get; set; } = string.Empty;
         public string BaseUri { get; set; } = string.Empty;
+        public string DefaultTransferNumber { get; set; } = string.Empty; // Add this for fallback transfers
     }
 
     public class VoiceOptions

@@ -1,4 +1,5 @@
 using Azure.Communication.CallAutomation;
+using Azure.Communication; // Add this line for PhoneNumberIdentifier
 using Azure.Identity;
 using Azure.Messaging;
 using Azure.Messaging.EventGrid;
@@ -18,6 +19,7 @@ using Microsoft.Extensions.Logging.Console; // Added for ConsoleLoggerProvider
 using Polly;
 using Polly.Extensions.Http;
 using Azure.Security.KeyVault.Secrets;
+using Microsoft.Extensions.Options; // Add this line for IOptions<>
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -224,8 +226,10 @@ app.MapPost("/api/calls/{contextId}", async (
             return Results.BadRequest($"Call objects failed to get for connection id {@event.CallConnectionId}.");
         }
 
-        if (@event is CallConnected)
+        if (@event is CallConnected callConnected)
         {
+            // With direct transfer, we don't expect separate agent calls anymore
+            // All CallConnected events should be for original calls
             try
             {
                 Conversation? conversation = null;
@@ -276,6 +280,18 @@ app.MapPost("/api/calls/{contextId}", async (
             }
         }
 
+        // Add handler for transfer events
+        if (@event is CallTransferAccepted transferAccepted)
+        {
+            logger.LogInformation("Call transfer accepted: {OperationContext}", transferAccepted.OperationContext);
+        }
+
+        if (@event is CallTransferFailed transferFailed)
+        {
+            logger.LogError("Call transfer failed: {OperationContext}, Code: {ResultCode}", 
+                transferFailed.OperationContext, transferFailed.ResultInformation?.Code);
+        }
+
         if (@event is PlayFailed)
         {
             logger.LogInformation("Play Failed");
@@ -301,6 +317,7 @@ app.MapPost("/api/calls/{contextId}", async (
             logger.LogInformation("Call Disconnected");
             callAutomationService.CleanupCall(correlationId);
         }
+
     }
     return Results.Ok();
 }).Produces(StatusCodes.Status200OK);
