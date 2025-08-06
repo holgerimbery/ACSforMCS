@@ -202,6 +202,16 @@ This section guides you through starting the application and testing your teleph
 
 Your telephony integration is now operational, allowing callers to interact with your Copilot Studio agent through traditional phone calls. The system converts speech to text, processes it through your intelligent agent, and delivers synthesized speech responses back to the caller.
 
+## Telephony features
+### Call transfer
+create a message node with 3 elements in the message
+* TRANSFER
+* Target phonenumber in E164
+* message to the user
+
+![example](./assets/transfer.jpg)
+
+
 
 ## Cloud-Native Architecture (work in progress)
 

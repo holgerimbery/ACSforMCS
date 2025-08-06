@@ -1,4 +1,5 @@
 using Azure.Communication.CallAutomation;
+using Azure.Communication; // Add this line if not already present
 using ACSforMCS.Configuration;
 using Microsoft.Extensions.Options;
 using System.Net.WebSockets;
@@ -22,6 +23,7 @@ namespace ACSforMCS.Services
         private readonly string _baseUri;
         private readonly string _baseWssUri;
         private readonly VoiceOptions _voiceOptions;
+        private readonly AppSettings _appSettings; // Add this field
         private readonly ConcurrentDictionary<string, CallContext> _callStore;
         private readonly ConcurrentDictionary<string, CancellationTokenSource> _cancellationTokenSources = new ConcurrentDictionary<string, CancellationTokenSource>();
 
@@ -37,9 +39,10 @@ namespace ACSforMCS.Services
             _httpClientFactory = httpClientFactory ?? throw new ArgumentNullException(nameof(httpClientFactory));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _voiceOptions = voiceOptions?.Value ?? throw new ArgumentNullException(nameof(voiceOptions));
+            _appSettings = appSettings?.Value ?? throw new ArgumentNullException(nameof(appSettings)); // Store the AppSettings
             _callStore = callStore ?? throw new ArgumentNullException(nameof(callStore));
             
-            _baseUri = appSettings.Value.BaseUri?.TrimEnd('/') ?? throw new ArgumentNullException(nameof(appSettings.Value.BaseUri));
+            _baseUri = _appSettings.BaseUri?.TrimEnd('/') ?? throw new ArgumentNullException(nameof(_appSettings.BaseUri));
             _baseWssUri = _baseUri.StartsWith("https://") ? _baseUri.Substring("https://".Length) : _baseUri;
         }
 
@@ -297,6 +300,39 @@ namespace ACSforMCS.Services
                                 // Don't rethrow - the user doesn't need to know about this technical error
                             }
                         }
+                        else if (agentActivity.Type == Constants.TransferActivityType && !string.IsNullOrEmpty(agentActivity.Text))
+                        {
+                            var transferParts = agentActivity.Text.Split('|');
+                            var phoneNumber = transferParts[0];
+                            var transferMessage = transferParts.Length > 1 ? transferParts[1] : "Please hold while I transfer your call.";
+                            
+                            _logger.LogInformation("Executing call transfer to: {PhoneNumber}", phoneNumber);
+                            
+                            try
+                            {
+                                var transferSuccess = await AnnounceAndTransferCallAsync(
+                                    callConnection, 
+                                    phoneNumber, 
+                                    transferMessage, 
+                                    cancellationToken);
+                                    
+                                if (!transferSuccess)
+                                {
+                                    await PlayToAllAsync(
+                                        callConnection.GetCallMedia(), 
+                                        "I'm sorry, I couldn't transfer your call right now. Please try again later.", 
+                                        cancellationToken);
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                _logger.LogError(ex, "Error during call transfer: {Message}", ex.Message);
+                                await PlayToAllAsync(
+                                    callConnection.GetCallMedia(), 
+                                    "I'm sorry, there was an issue with the transfer. Please try again.", 
+                                    cancellationToken);
+                            }
+                        }
                         else if (agentActivity.Type == Constants.EndOfConversationActivityType)
                         {
                             _logger.LogInformation("End of Conversation signal received, hanging up call");
@@ -357,6 +393,101 @@ namespace ACSforMCS.Services
             };
 
             await callConnectionMedia.PlayToAllAsync(playOptions, cancellationToken);
+        }
+
+        /// <summary>
+        /// Transfers the current call to an external phone number using ACS built-in transfer
+        /// </summary>
+        /// <param name="callConnection">The current call connection</param>
+        /// <param name="targetPhoneNumber">The phone number to transfer to (in E.164 format, e.g., "+1234567890")</param>
+        /// <param name="cancellationToken">Cancellation token</param>
+        /// <returns>True if transfer was initiated successfully</returns>
+        public async Task<bool> TransferCallToPhoneNumberAsync(
+            CallConnection callConnection, 
+            string targetPhoneNumber, 
+            CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                // Validate phone number format
+                if (string.IsNullOrEmpty(targetPhoneNumber) || !targetPhoneNumber.StartsWith("+"))
+                {
+                    _logger.LogError("Invalid phone number format: {PhoneNumber}. Must be in E.164 format", targetPhoneNumber);
+                    return false;
+                }
+
+                _logger.LogInformation("Processing direct transfer to: {PhoneNumber}", targetPhoneNumber);
+                
+                var targetParticipant = new PhoneNumberIdentifier(targetPhoneNumber);
+                
+                // Use ACS's built-in transfer functionality
+                var transferOptions = new TransferToParticipantOptions(targetParticipant)
+                {
+                    OperationContext = "DirectTransfer"
+                };
+                
+                await callConnection.TransferCallToParticipantAsync(transferOptions, cancellationToken);
+                
+                _logger.LogInformation("Successfully initiated direct transfer to {PhoneNumber}", targetPhoneNumber);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Direct transfer failed: {Message}", ex.Message);
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Announces transfer with caller information and processes the request
+        /// </summary>
+        public async Task<bool> AnnounceAndTransferCallAsync(
+            CallConnection callConnection,
+            string targetPhoneNumber,
+            string? customMessage = null,
+            CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                var callMedia = callConnection.GetCallMedia();
+                
+                // Create a more informative message
+                var transferMessage = customMessage ?? 
+                    "Thank you for your call. I'm connecting you to one of our specialists who will be able to assist you further. Please hold while I transfer your call.";
+                
+                await PlayToAllAsync(callMedia, transferMessage, cancellationToken);
+                await Task.Delay(3000, cancellationToken);
+                
+                // Process the transfer
+                var transferSuccess = await TransferCallToPhoneNumberAsync(callConnection, targetPhoneNumber, cancellationToken);
+                
+                if (transferSuccess)
+                {
+                    // In a real implementation, you might:
+                    // - Keep the call active and add the agent as a participant
+                    // - Hang up and have the system call both parties
+                    // - For now, we'll inform the user and end the call
+                    
+                    await PlayToAllAsync(callMedia, 
+                        "Your call is being transferred. If you are disconnected, an agent will call you back within a few minutes.", 
+                        cancellationToken);
+                    
+                    await Task.Delay(2000, cancellationToken);
+                    return true;
+                }
+                else
+                {
+                    await PlayToAllAsync(callMedia, 
+                        "I'm sorry, but I'm unable to transfer your call at this time. Please try calling back later.", 
+                        cancellationToken);
+                    return false;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Transfer announcement failed: {Message}", ex.Message);
+                return false;
+            }
         }
 
         public AgentActivity ExtractLatestAgentActivity(string rawMessage)
@@ -429,6 +560,31 @@ namespace ACSforMCS.Services
                             continue; // Skip messages from the user
                         }
 
+                        // Get text content for processing
+                        string? textContent = null;
+                        if (activity.TryGetProperty("text", out var text))
+                        {
+                            textContent = text.GetString();
+                        }
+
+                        // Check for transfer command
+                        if (textContent != null && textContent.StartsWith("TRANSFER:"))
+                        {
+                            var parts = textContent.Split(':', 3);
+                            if (parts.Length >= 2)
+                            {
+                                var phoneNumber = parts[1].Trim();
+                                var transferMessage = parts.Length >= 3 ? parts[2].Trim() : "Please hold while I transfer your call.";
+                                
+                                _logger.LogInformation("Transfer command received for phone number: {PhoneNumber}", phoneNumber);
+                                return new AgentActivity()
+                                {
+                                    Type = Constants.TransferActivityType,
+                                    Text = $"{phoneNumber}|{transferMessage}"
+                                };
+                            }
+                        }
+
                         // Try to get the speak content first
                         if (activity.TryGetProperty("speak", out var speak))
                         {
@@ -442,15 +598,14 @@ namespace ACSforMCS.Services
                         }
 
                         // Fall back to text content
-                        if (activity.TryGetProperty("text", out var text))
+                        if (!string.IsNullOrEmpty(textContent))
                         {
-                            string? textContent = text.GetString();
                             _logger.LogDebug("Text content received: {TextContent}", textContent);
 
                             // Add additional error detection logic
-                            if (textContent != null && (textContent.Contains("error") || 
-                                                       textContent.Contains("sorry") || 
-                                                       textContent.Contains("fail")))
+                            if (textContent.Contains("error") || 
+                                textContent.Contains("sorry") || 
+                                textContent.Contains("fail"))
                             {
                                 return new AgentActivity()
                                 {
@@ -462,19 +617,47 @@ namespace ACSforMCS.Services
                             return new AgentActivity()
                             {
                                 Type = Constants.MessageActivityType,
-                                Text = RemoveReferences(textContent ?? string.Empty)
+                                Text = RemoveReferences(textContent)
                             };
                         }
 
                         _logger.LogDebug("Message activity at index {Index} has neither 'speak' nor 'text' property", i);
                     }
-                    else if(typeValue == Constants.EndOfConversationActivityType)
+                    else if (typeValue == Constants.EndOfConversationActivityType)
                     {
                         _logger.LogInformation("EndOfConversation activity received");
                         return new AgentActivity()
                         {
                             Type = Constants.EndOfConversationActivityType
                         };
+                    }
+                    else if (typeValue == "transfer")
+                    {
+                        // Handle structured transfer activity
+                        string? phoneNumber = null;
+                        string? transferMessage = null;
+                        
+                        if (activity.TryGetProperty("value", out var transferValue))
+                        {
+                            if (transferValue.TryGetProperty("phoneNumber", out var phoneNumberProp))
+                            {
+                                phoneNumber = phoneNumberProp.GetString();
+                            }
+                            if (transferValue.TryGetProperty("message", out var messageProp))
+                            {
+                                transferMessage = messageProp.GetString();
+                            }
+                        }
+                        
+                        if (!string.IsNullOrEmpty(phoneNumber))
+                        {
+                            _logger.LogInformation("Structured transfer command received for phone number: {PhoneNumber}", phoneNumber);
+                            return new AgentActivity()
+                            {
+                                Type = Constants.TransferActivityType,
+                                Text = $"{phoneNumber}|{transferMessage ?? "Please hold while I transfer your call."}"
+                            };
+                        }
                     }
                 }
 
