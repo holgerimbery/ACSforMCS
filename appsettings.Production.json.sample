@@ -1,0 +1,101 @@
+{
+  // PRODUCTION ENVIRONMENT CONFIGURATION
+  // This file contains settings optimized for production deployment
+  // It overrides values from appsettings.json when running in Production mode
+  // Token placeholders (#{...}#) are replaced during Azure DevOps deployment
+  
+  // Production logging configuration - optimized for performance and essential monitoring
+  "Logging": {
+    "LogLevel": {
+      // Warning level for production to reduce log volume while capturing important issues
+      // This balances performance with operational visibility
+      "Default": "Warning",
+      
+      // Error level for ASP.NET Core to only log serious framework issues
+      // Reduces noise from routine HTTP operations in production logs
+      "Microsoft.AspNetCore": "Error"
+      
+      // PRODUCTION LOGGING CONSIDERATIONS:
+      // - Higher log levels improve performance by reducing I/O operations
+      // - Use Application Insights or similar tools for detailed telemetry
+      // - Consider structured logging for better monitoring and alerting
+      // - Monitor disk space usage if logging to files
+    }
+  },
+  
+  // Azure Key Vault configuration for production secret management
+  // CRITICAL: All production secrets must be stored in Azure Key Vault
+  "KeyVault": {
+    // Azure DevOps replacement token for Key Vault endpoint
+    // This token is replaced during deployment pipeline with actual vault URL
+    // Format after replacement: https://your-prod-keyvault.vault.azure.net/
+    "Endpoint": "#{KeyVault:Endpoint}#"
+    
+    // PRODUCTION KEY VAULT SETUP:
+    // 1. Create dedicated production Key Vault with appropriate access policies
+    // 2. Use Managed Identity for application authentication (no secrets in code)
+    // 3. Store these secrets in Key Vault:
+    //    - AcsConnectionString: Production ACS connection string
+    //    - CognitiveServiceEndpoint: Production Cognitive Services endpoint
+    //    - DirectLineSecret: Production Bot Framework DirectLine secret
+    //    - AgentPhoneNumber: Production agent transfer phone number
+    //    - BaseUri-Production: Production application URL
+    // 4. Configure RBAC permissions for the application's Managed Identity
+    // 5. Enable Key Vault logging and monitoring for security auditing
+  },
+  
+  // Voice configuration for production speech synthesis
+  "Voice": {
+    // Production-grade neural voice for consistent user experience
+    // Choose voice based on your target audience and brand requirements
+    "VoiceName": "en-US-NancyNeural",
+    
+    // Language setting must align with your customer base
+    // Consider regional preferences and accessibility requirements
+    "Language": "en-US"
+    
+    // PRODUCTION VOICE CONSIDERATIONS:
+    // - Test voice quality with actual customer scenarios
+    // - Consider offering multiple voice options for accessibility
+    // - Monitor Azure Cognitive Services usage and costs
+    // - Ensure voice selection aligns with brand guidelines
+  }
+  
+  // PRODUCTION DEPLOYMENT CHECKLIST:
+  //
+  // 1. AZURE DEVOPS PIPELINE SETUP:
+  //    - Configure variable groups with production tokens
+  //    - Set up replacement tokens for #{KeyVault:Endpoint}#
+  //    - Ensure secure variable handling in pipeline
+  //    - Test deployment in staging environment first
+  //
+  // 2. AZURE INFRASTRUCTURE:
+  //    - Use production-tier App Service plan for performance
+  //    - Configure auto-scaling based on call volume
+  //    - Set up Application Insights for monitoring and alerting
+  //    - Enable backup and disaster recovery procedures
+  //
+  // 3. SECURITY CONFIGURATION:
+  //    - Enable HTTPS only with proper SSL certificates
+  //    - Configure IP restrictions if needed
+  //    - Enable Managed Identity for Key Vault access
+  //    - Review and audit all access permissions
+  //
+  // 4. MONITORING AND ALERTING:
+  //    - Set up health check monitoring
+  //    - Configure alerts for failed calls or high error rates
+  //    - Monitor Azure service quotas and limits
+  //    - Set up log aggregation and analysis
+  //
+  // 5. COMPLIANCE AND GOVERNANCE:
+  //    - Ensure data residency requirements are met
+  //    - Review and document data retention policies
+  //    - Implement audit logging for compliance
+  //    - Regular security assessments and updates
+  //
+  // 6. PERFORMANCE OPTIMIZATION:
+  //    - Configure connection pooling and timeout settings
+  //    - Monitor and optimize Azure service tier selections
+  //    - Implement caching strategies where appropriate
+  //    - Regular performance testing and optimization
+}
