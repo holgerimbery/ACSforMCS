@@ -230,4 +230,4 @@ For production-ready deployment instructions, refer to [Azure Deployment Guide f
 Helping hands are welcome to enhance this telephony integration capability. If you're interested in contributing, please reach out to us with your ideas and PRs. 
 
 ## Documentation of the code
-![Documentation](./code_documentation.md)
+[Documentation](./code_documentation.md)
