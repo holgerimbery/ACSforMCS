@@ -11,9 +11,8 @@
 8. [Middleware](#middleware)
 9. [Health Checks](#health-checks)
 10. [Deployment](#deployment)
-11. [Development Setup](#development-setup)
-12. [Usage Examples](#usage-examples)
-13. [Troubleshooting](#troubleshooting)
+11. [Usage Examples](#usage-examples)
+12. [Troubleshooting](#troubleshooting)
 
 ## Project Overview
 
