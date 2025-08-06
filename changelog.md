@@ -1,4 +1,4 @@
-## 2025-08-01 - v0.2
+## 2025-08-06 - v0.2
 - better error handling
 - all secrets to Azure Key Vault
 - keyvault URI stored in user secret (development) and GitHub Action (production)
