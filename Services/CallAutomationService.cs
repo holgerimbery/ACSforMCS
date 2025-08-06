@@ -258,14 +258,44 @@ namespace ACSforMCS.Services
                         // Don't play error responses to the user
                         if (agentActivity.Type == Constants.ErrorActivityType)
                         {
-                            _logger.LogWarning("Skipping error response: {ErrorText}", agentActivity.Text);
+                            _logger.LogWarning("Caught error response: {ErrorText}", agentActivity.Text);
+                            
+                            // Check for specific types of errors
+                            if (agentActivity.Text.Contains("authentication") || agentActivity.Text.Contains("authorization"))
+                            {
+                                // Handle auth errors
+                                await PlayToAllAsync(callConnection.GetCallMedia(), 
+                                    "I'm having trouble connecting to the service. Please wait a moment.", 
+                                    cancellationToken);
+                            }
+                            else if (agentActivity.Text.Contains("timeout"))
+                            {
+                                // Handle timeout errors
+                                await PlayToAllAsync(callConnection.GetCallMedia(), 
+                                    "I need a bit more time to process that. One moment please.", 
+                                    cancellationToken);
+                            }
+                            else
+                            {
+                                // Generic handling - just skip the error
+                            }
+                            
                             continue;
                         }
 
                         if (agentActivity.Type == Constants.MessageActivityType && !string.IsNullOrEmpty(agentActivity.Text))
                         {
                             _logger.LogInformation("Playing Agent Response: {AgentText}", agentActivity.Text);
-                            await PlayToAllAsync(callConnection.GetCallMedia(), agentActivity.Text ?? string.Empty, cancellationToken);
+                            try 
+                            {
+                                // Attempt to play the message
+                                await PlayToAllAsync(callConnection.GetCallMedia(), agentActivity.Text ?? string.Empty, cancellationToken);
+                            }
+                            catch (Exception ex)
+                            {
+                                _logger.LogError(ex, "Error playing message to user: {Message}", ex.Message);
+                                // Don't rethrow - the user doesn't need to know about this technical error
+                            }
                         }
                         else if (agentActivity.Type == Constants.EndOfConversationActivityType)
                         {
@@ -416,6 +446,19 @@ namespace ACSforMCS.Services
                         {
                             string? textContent = text.GetString();
                             _logger.LogDebug("Text content received: {TextContent}", textContent);
+
+                            // Add additional error detection logic
+                            if (textContent != null && (textContent.Contains("error") || 
+                                                       textContent.Contains("sorry") || 
+                                                       textContent.Contains("fail")))
+                            {
+                                return new AgentActivity()
+                                {
+                                    Type = Constants.ErrorActivityType,
+                                    Text = RemoveReferences(textContent)
+                                };
+                            }
+
                             return new AgentActivity()
                             {
                                 Type = Constants.MessageActivityType,
