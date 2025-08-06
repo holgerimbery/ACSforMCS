@@ -1,3 +1,6 @@
+## 2025-08-06 - v0.21
+- added in line comments to code and a overview documentation file
+
 ## 2025-08-06 - v0.2
 - better error handling
 - all secrets to Azure Key Vault

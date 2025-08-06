@@ -1,16 +1,75 @@
 {
+  // Logging configuration for the application
+  // Controls the verbosity and filtering of log messages throughout the system
   "Logging": {
     "LogLevel": {
+      // Default log level for all components - "Information" provides good balance of detail without noise
+      // Options: Trace, Debug, Information, Warning, Error, Critical, None
       "Default": "Information",
+      
+      // Reduce ASP.NET Core framework logging to Warning level to minimize system noise
+      // This prevents flooding logs with routine HTTP request/response information
       "Microsoft.AspNetCore": "Warning"
     }
   },
+  
+  // Defines which hosts are allowed to access this application
+  // "*" allows all hosts - in production, consider restricting to specific domains for security
   "AllowedHosts": "*",
+  
+  // Azure Key Vault configuration for secure secret management
+  // Key Vault stores sensitive configuration values like connection strings and API keys
   "KeyVault": {
+    // The endpoint URL for your Azure Key Vault instance
+    // Format: https://your-keyvault-name.vault.azure.net/
+    // Leave empty to use local configuration values instead of Key Vault
     "Endpoint": ""
   },
+  
+  // Voice synthesis configuration for text-to-speech operations
+  // These settings control how bot responses are converted to speech for callers
   "Voice": {
+    // The specific Azure Cognitive Services voice to use for speech synthesis
+    // "en-US-NancyNeural" is a high-quality neural voice with natural intonation
+    // Other options include: en-US-JennyNeural, en-US-GuyNeural, en-US-AriaNeural, etc.
+    // See Azure Cognitive Services documentation for full list of available voices
     "VoiceName": "en-US-NancyNeural",
+    
+    // The language code for speech recognition and synthesis
+    // Must match the language of the selected voice
+    // Format: language-region (e.g., "en-US", "es-ES", "fr-FR", "de-DE")
     "Language": "en-US"
   }
 }
+
+// IMPORTANT CONFIGURATION NOTES:
+//
+// 1. AZURE KEY VAULT SETUP:
+//    - Create an Azure Key Vault instance in your Azure subscription
+//    - Store the following secrets in Key Vault:
+//      * AcsConnectionString: Your Azure Communication Services connection string
+//      * CognitiveServiceEndpoint: Your Cognitive Services endpoint URL
+//      * DirectLineSecret: Your Bot Framework DirectLine secret
+//      * AgentPhoneNumber: The phone number for agent transfers
+//      * BaseUri-Development: Your development environment URL
+//      * BaseUri-Production: Your production environment URL
+//
+// 2. AUTHENTICATION:
+//    - The application uses DefaultAzureCredential for Key Vault access
+//    - In development: Use Azure CLI (az login) or Visual Studio authentication
+//    - In production: Use Managed Identity or Service Principal
+//
+// 3. ENVIRONMENT-SPECIFIC CONFIGURATION:
+//    - Create separate appsettings.Development.json and appsettings.Production.json files
+//    - Override settings as needed for each environment
+//    - Never commit actual secrets to source control
+//
+// 4. LOCAL DEVELOPMENT:
+//    - If Key Vault endpoint is empty, the app will look for secrets in local configuration
+//    - This allows development without Azure dependencies
+//    - Use appsettings.Development.json for local secrets (add to .gitignore)
+//
+// 5. VOICE CUSTOMIZATION:
+//    - Choose voices appropriate for your target audience and language
+//    - Neural voices provide more natural speech than standard voices
+//    - Consider regional accents and cultural preferences for your users

@@ -105,16 +105,17 @@ $keyVaultName = "kv-your-resource-base-name"
 New-AzKeyVault -Name $keyVaultName -ResourceGroupName $resourceGroup -Location $location
 
 # Add the required secrets
+```powershell
+# Set your actual service values
 $secrets = @{
-    "CognitiveServiceEndpoint" = "https://cogserviceacs.cognitiveservices.azure.com/"
-    "AcsConnectionString" = "endpoint=https://youracs.communication.azure.com/;accesskey=youraccesskey"
+    "CognitiveServiceEndpoint" = "https://cog-your-resource-base-name.cognitiveservices.azure.com/"
+    "AcsConnectionString" = "endpoint=https://acs-your-resource-base-name.communication.azure.com/;accesskey=youraccesskey"
     "DirectLineSecret" = "your-directline-secret"
     "AgentPhoneNumber" = "+1234567890"
+    "BaseUri-Development" = "https://your-devtunnel-url"
+    "BaseUri-Production" = "https://app-your-resource-base-name.azurewebsites.net"
 }
 
-# Add environment-specific BaseUri values
-$secrets["BaseUri-Development"] = "https://your-devtunnel-url"
-$secrets["BaseUri-Production"] = "https://app-your-resource-base-name.azurewebsites.net"
 
 foreach ($key in $secrets.Keys) {
     $secureValue = ConvertTo-SecureString $secrets[$key] -AsPlainText -Force
@@ -227,3 +228,6 @@ For production-ready deployment instructions, refer to [Azure Deployment Guide f
       
 ## Want to Contribute?
 Helping hands are welcome to enhance this telephony integration capability. If you're interested in contributing, please reach out to us with your ideas and PRs. 
+
+## Documentation of the code
+![Documentation](./code_documentation.md)

@@ -1,12 +1,77 @@
 {
+  // DEVELOPMENT ENVIRONMENT CONFIGURATION
+  // This file contains settings specific to the Development environment
+  // It overrides values from appsettings.json when running in Development mode
+  // Copy this file to appsettings.Development.json and customize for your local setup
+  
+  // Enhanced logging configuration for development debugging
   "Logging": {
     "LogLevel": {
+      // Keep Information level for detailed development debugging
+      // In development, you want to see more details about application flow
       "Default": "Information",
+      
+      // Suppress ASP.NET Core framework noise to focus on application-specific logs
+      // This prevents overwhelming the console with HTTP pipeline details
       "Microsoft.AspNetCore": "Warning"
+      
+      // DEVELOPMENT TIP: You can add more specific log filters here:
+      // "ACSforMCS": "Debug",                    // Enable debug logging for your application
+      // "System.Net.Http.HttpClient": "Debug",   // See HTTP client request/response details
+      // "Azure.Communication": "Debug"           // See Azure Communication Services SDK logs
     }
   },
+  
+  // Voice configuration for development testing
+  // Use the same voice settings as production unless testing specific voices
   "Voice": {
+    // Neural voice for high-quality speech synthesis during development
+    // Consider using different voices for testing various scenarios:
+    // - "en-US-JennyNeural" for a different female voice
+    // - "en-US-GuyNeural" for a male voice
+    // - "en-US-AriaNeural" for a more conversational tone
     "VoiceName": "en-US-NancyNeural",
+    
+    // Language setting must match the voice
+    // For testing multilingual scenarios, you might change this to:
+    // "es-ES" for Spanish, "fr-FR" for French, "de-DE" for German, etc.
     "Language": "en-US"
   }
+  
+  // DEVELOPMENT-SPECIFIC CONFIGURATION NOTES:
+  //
+  // 1. LOCAL SECRETS MANAGEMENT:
+  //    If not using Azure Key Vault for development, add these secrets directly:
+  //    "AcsConnectionString": "endpoint=https://your-acs.communication.azure.com/;accesskey=your-key",
+  //    "CognitiveServiceEndpoint": "https://your-region.api.cognitive.microsoft.com/",
+  //    "DirectLineSecret": "your-directline-secret",
+  //    "AgentPhoneNumber": "+1234567890",
+  //    "BaseUri": "https://your-dev-tunnel.ngrok.io"
+  //
+  // 2. DEVELOPMENT TUNNELING:
+  //    - Use Visual Studio dev tunnels or ngrok for webhook testing
+  //    - The VS_TUNNEL_URL environment variable will override BaseUri
+  //    - Example: https://abc123.devtunnels.ms
+  //
+  // 3. AZURE COMMUNICATION SERVICES:
+  //    - Create an ACS resource in your development subscription
+  //    - Acquire a phone number for testing incoming calls
+  //    - Configure Event Grid webhook to your tunnel URL + /api/incomingCall
+  //
+  // 4. DEBUGGING TIPS:
+  //    - Enable debug logging for specific namespaces as needed
+  //    - Use breakpoints in webhook endpoints to trace call flow
+  //    - Monitor Azure portal for ACS and Bot Framework telemetry
+  //    - Test with actual phone calls or use ACS calling SDK for simulation
+  //
+  // 5. SECURITY FOR DEVELOPMENT:
+  //    - Never commit actual secrets to source control
+  //    - Use user secrets (dotnet user-secrets) for sensitive values
+  //    - Consider using Azure CLI authentication for Key Vault access
+  //    - Rotate development secrets regularly
+  //
+  // 6. ENVIRONMENT ISOLATION:
+  //    - Use separate Azure resources for development vs production
+  //    - Different phone numbers, bot registrations, and ACS instances
+  //    - This prevents development testing from affecting production systems
 }
