@@ -222,7 +222,7 @@ TRANSFER:+12345678:Message to User
 
 
 
-## Cloud-Native Architecture (work in progress)
+## Cloud-Native Architecture (documentation: work in progress)
 
 The solution leverages modern cloud-native principles to ensure scalability, resilience, and maintainability.
 
