@@ -8,3 +8,6 @@ appsettings.Development.json
 .vscode/tasks.json
 .vscode/launch.json
 .wiki/
+publish/
+deployment.zip
+

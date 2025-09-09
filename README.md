@@ -233,11 +233,11 @@ TRANSFER:+12345678:Message to User
 
 
 
-## Cloud-Native Architecture (documentation: work in progress)
+## Full Azure Deployment
 
 The solution leverages modern cloud-native principles to ensure scalability, resilience, and maintainability.
 
-For production-ready deployment instructions, refer to [Azure Deployment Guide for ACSforMCS.md](Azure%20Deployment%20Guide%20for%20ACSforMCS.md).
+For production-ready deployment instructions, refer to [Azure Web App Deployment Guide.md](Azure%20Web%20App%20Deployment%20Guide.md).
 
 ## Planned Enhancements
 
