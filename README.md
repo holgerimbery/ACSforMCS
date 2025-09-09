@@ -16,11 +16,10 @@ This solution provides an alternative communication channel for Copilot Studio a
 enabling organizations to extend their conversational AI capabilities to traditional phone systems
 while leveraging the natural language understanding and dialog management features of Microsoft Copilot Studio.
 
-[Listen to the audio](./assets/call.m4a)
 
-<audio controls>
-<source src="https://github.com/holgerimbery/ACSforMCS/raw/main/assets/call.m4a" type="audio/mpeg">
-</audio>
+https://github.com/user-attachments/assets/c3f3c304-f743-4eb3-9f28-dd22338489c1
+
+
 
 
 ![](./assets/screen0.jpg)
