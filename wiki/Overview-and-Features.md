@@ -1,6 +1,6 @@
 # Overview and Features
 
-## Project Overview
+## Architecture Overview
 
 **ACSforMCS** (Azure Communication Services for Microsoft Customer Service) is a cutting-edge .NET 9 web application that revolutionizes customer service by bridging traditional telephony with modern conversational AI. This solution enables customers to interact naturally with Microsoft Copilot Studio virtual agents through regular phone calls, combining the universal accessibility of telephony with the intelligence of AI-powered customer service.
 
@@ -37,7 +37,7 @@ The application transforms ordinary phone calls into intelligent, context-aware 
 - **Graceful conversation endings** - Natural conversation completion with proper closure
 - **Call recording integration** - Optional recording for quality assurance and training
 
-### **Enterprise-Grade Security**
+### Security and Compliance
 - **Azure Key Vault integration** - Centralized, secure management of all configuration secrets
 - **Managed identity authentication** - Passwordless authentication to Azure services
 - **RBAC (Role-Based Access Control)** - Granular permissions for Key Vault access
@@ -139,64 +139,64 @@ The application transforms ordinary phone calls into intelligent, context-aware 
 - **Proactive notifications** - Automated callbacks for service updates or alerts
 
 ### **Business Process Automation**
-- **📦 Order management** - Track shipments, process returns, update delivery preferences
-- **💰 Payment processing** - Handle billing inquiries, process payments, set up payment plans
-- **📝 Data collection** - Conduct surveys, gather feedback, collect customer information
-- **🎯 Lead qualification** - Screen potential customers and route qualified leads to sales teams
-- **🔄 Process workflows** - Automate multi-step business processes through conversational interfaces
+- **Order management** - Track shipments, process returns, update delivery preferences
+- **Payment processing** - Handle billing inquiries, process payments, set up payment plans
+- **Data collection** - Conduct surveys, gather feedback, collect customer information
+- **Lead qualification** - Screen potential customers and route qualified leads to sales teams
+- **Process workflows** - Automate multi-step business processes through conversational interfaces
 
 ### **Industry-Specific Applications**
 
 #### **Healthcare**
-- **📋 Appointment booking** - Schedule patient visits with availability checking
-- **💊 Prescription refills** - Process routine medication refill requests
-- **🏥 Symptom screening** - Initial health assessments and triage recommendations
-- **📞 Appointment reminders** - Automated confirmation and reminder calls
+- **Appointment booking** - Schedule patient visits with availability checking
+- **Prescription refills** - Process routine medication refill requests
+- **Symptom screening** - Initial health assessments and triage recommendations
+- **Appointment reminders** - Automated confirmation and reminder calls
 
 #### **Financial Services**
-- **💳 Account services** - Balance inquiries, transaction disputes, card management
-- **📊 Investment updates** - Portfolio performance, market alerts, investment advice
-- **🛡️ Fraud detection** - Verify suspicious transactions and security alerts
-- **💡 Financial planning** - Basic advisory services and product recommendations
+- **Account services** - Balance inquiries, transaction disputes, card management
+- **Investment updates** - Portfolio performance, market alerts, investment advice
+- **Fraud detection** - Verify suspicious transactions and security alerts
+- **Financial planning** - Basic advisory services and product recommendations
 
 #### **Retail and E-commerce**
-- **📦 Order support** - Track orders, process returns, handle shipping inquiries
-- **🛒 Product information** - Detailed product specs, availability, pricing
-- **🎁 Gift services** - Gift card purchases, gift wrapping, special requests
-- **🏪 Store services** - Hours, locations, inventory availability
+- **Order support** - Track orders, process returns, handle shipping inquiries
+- **Product information** - Detailed product specs, availability, pricing
+- **Gift services** - Gift card purchases, gift wrapping, special requests
+- **Store services** - Hours, locations, inventory availability
 
-## 🔄 Call Flow Examples
+## Call Flow Examples
 
 ### **Typical Customer Interaction**
 
-1. **👤 Customer**: *Dials the company phone number*
-2. **🤖 Bot**: "Hello! Thank you for calling. How can I help you today?"
-3. **👤 Customer**: "I need to check my account balance"
-4. **🤖 Bot**: "I can help you with that. Can you please provide your account number?"
-5. **👤 Customer**: "It's 12345678"
-6. **🤖 Bot**: "Thank you. Your current account balance is $1,234.56. Is there anything else I can help you with?"
-7. **👤 Customer**: "No, that's all I needed"
-8. **🤖 Bot**: "Great! Thank you for calling. Have a wonderful day!"
+1. **Customer**: *Dials the company phone number*
+2. **Bot**: "Hello! Thank you for calling. How can I help you today?"
+3. **Customer**: "I need to check my account balance"
+4. **Bot**: "I can help you with that. Can you please provide your account number?"
+5. **Customer**: "It's 12345678"
+6. **Bot**: "Thank you. Your current account balance is $1,234.56. Is there anything else I can help you with?"
+7. **Customer**: "No, that's all I needed"
+8. **Bot**: "Great! Thank you for calling. Have a wonderful day!"
 
 ### **Transfer Scenario**
 
-1. **👤 Customer**: "I need to speak to someone about a billing dispute"
-2. **🤖 Bot**: "I understand you need help with a billing dispute. Let me connect you with one of our specialists who can assist you with this."
-3. **📞 System**: *Initiates transfer to billing department*
-4. **🤖 Bot**: "Please hold while I transfer your call. If you're disconnected, a specialist will call you back within a few minutes."
+1. **Customer**: "I need to speak to someone about a billing dispute"
+2. **Bot**: "I understand you need help with a billing dispute. Let me connect you with one of our specialists who can assist you with this."
+3. **System**: *Initiates transfer to billing department*
+4. **Bot**: "Please hold while I transfer your call. If you're disconnected, a specialist will call you back within a few minutes."
 
-## 🌟 Benefits
+## Benefits
 
 ### **For Customers**
-- **⚡ Immediate response** - Skip phone queues and get instant assistance
-- **💬 Natural conversation** - Speak normally without navigating complex phone menus
-- **🌐 24/7 availability** - Access service any time, including holidays and weekends
-- **🎯 Consistent quality** - Receive the same high-quality service on every call
-- **🔄 Context retention** - No need to repeat information during the conversation
-- **🌍 Accessibility** - Phone-based interface accessible to all users regardless of digital literacy
+- **Immediate response** - Skip phone queues and get instant assistance
+- **Natural conversation** - Speak normally without navigating complex phone menus
+- **24/7 availability** - Access service any time, including holidays and weekends
+- **Consistent quality** - Receive the same high-quality service on every call
+- **Context retention** - No need to repeat information during the conversation
+- **Accessibility** - Phone-based interface accessible to all users regardless of digital literacy
 
 ### **For Organizations**
-- **💰 Cost reduction** - Reduce operational costs by automating up to 80% of routine inquiries
+- **Cost reduction** - Reduce operational costs by automating up to 80% of routine inquiries
 - **Infinite scalability** - Handle unlimited concurrent calls without additional staffing
 - **Improved efficiency** - Free human agents to focus on complex, high-value interactions
 - **Rich analytics** - Gain comprehensive insights into customer needs and conversation patterns
