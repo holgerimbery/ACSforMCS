@@ -376,20 +376,33 @@ namespace ACSforMCS.Services
                         {
                             _logger.LogWarning("Caught error response: {ErrorText}", agentActivity.Text);
                             
-                            // Provide context-specific error handling
-                            if (agentActivity.Text.Contains("authentication") || agentActivity.Text.Contains("authorization"))
+                            // Only play audio for specific, actionable errors - not generic parsing issues
+                            try
                             {
-                                await PlayToAllAsync(callConnection.GetCallMedia(), 
-                                    "I'm having trouble connecting to the service. Please wait a moment.", 
-                                    cancellationToken);
+                                if (!string.IsNullOrEmpty(agentActivity.Text) && 
+                                    (agentActivity.Text.Contains("authentication") || agentActivity.Text.Contains("authorization")))
+                                {
+                                    await PlayToAllAsync(callConnection.GetCallMedia(), 
+                                        "I'm having trouble connecting to the service. Please wait a moment.", 
+                                        cancellationToken);
+                                }
+                                else if (!string.IsNullOrEmpty(agentActivity.Text) && agentActivity.Text.Contains("timeout"))
+                                {
+                                    await PlayToAllAsync(callConnection.GetCallMedia(), 
+                                        "I need a bit more time to process that. One moment please.", 
+                                        cancellationToken);
+                                }
+                                // For generic "Something went wrong" and parsing errors, don't play anything
+                                // These are usually system-level parsing issues, not user-facing problems
+                                else
+                                {
+                                    _logger.LogDebug("Silently ignoring generic error message: {ErrorText}", agentActivity.Text);
+                                }
                             }
-                            else if (agentActivity.Text.Contains("timeout"))
+                            catch (Exception ex)
                             {
-                                await PlayToAllAsync(callConnection.GetCallMedia(), 
-                                    "I need a bit more time to process that. One moment please.", 
-                                    cancellationToken);
+                                _logger.LogWarning(ex, "Could not play error message, call may have ended: {Message}", ex.Message);
                             }
-                            // For other errors, silently continue without confusing the user
                             
                             continue;
                         }
@@ -397,6 +410,14 @@ namespace ACSforMCS.Services
                         // Regular message responses - convert to speech and play to caller
                         if (agentActivity.Type == Constants.MessageActivityType && !string.IsNullOrEmpty(agentActivity.Text))
                         {
+                            // Filter out generic error messages that shouldn't be played to users
+                            if (agentActivity.Text.Contains("An error has occurred") || 
+                                agentActivity.Text.Contains("error has occurred"))
+                            {
+                                _logger.LogWarning("Filtered out generic error message from bot: {ErrorText}", agentActivity.Text);
+                                continue;
+                            }
+                            
                             _logger.LogInformation("Playing Agent Response: {AgentText}", agentActivity.Text);
                             try 
                             {
@@ -427,19 +448,33 @@ namespace ACSforMCS.Services
                                     
                                 if (!transferSuccess)
                                 {
-                                    await PlayToAllAsync(
-                                        callConnection.GetCallMedia(), 
-                                        "I'm sorry, I couldn't transfer your call right now. Please try again later.", 
-                                        cancellationToken);
+                                    try
+                                    {
+                                        await PlayToAllAsync(
+                                            callConnection.GetCallMedia(), 
+                                            "I'm sorry, I couldn't transfer your call right now. Please try again later.", 
+                                            cancellationToken);
+                                    }
+                                    catch (Exception playEx)
+                                    {
+                                        _logger.LogWarning(playEx, "Could not play transfer failure message, call may have ended");
+                                    }
                                 }
                             }
                             catch (Exception ex)
                             {
                                 _logger.LogError(ex, "Error during call transfer: {Message}", ex.Message);
-                                await PlayToAllAsync(
-                                    callConnection.GetCallMedia(), 
-                                    "I'm sorry, there was an issue with the transfer. Please try again.", 
-                                    cancellationToken);
+                                try
+                                {
+                                    await PlayToAllAsync(
+                                        callConnection.GetCallMedia(), 
+                                        "I'm sorry, there was an issue with the transfer. Please try again.", 
+                                        cancellationToken);
+                                }
+                                catch (Exception playEx)
+                                {
+                                    _logger.LogWarning(playEx, "Could not play transfer error message, call may have ended");
+                                }
                             }
                         }
                         // End conversation signal - terminate the call gracefully
@@ -504,18 +539,32 @@ namespace ACSforMCS.Services
         /// <param name="cancellationToken">Cancellation token for the operation</param>
         public async Task PlayToAllAsync(CallMedia callConnectionMedia, string message, CancellationToken cancellationToken = default)
         {
-            // Create SSML (Speech Synthesis Markup Language) for better voice control
-            var ssml = $@"<speak version=""1.0"" xmlns=""http://www.w3.org/2001/10/synthesis"" xml:lang=""{_voiceOptions.Language}"">
+            try
+            {
+                // Create SSML (Speech Synthesis Markup Language) for better voice control
+                var ssml = $@"<speak version=""1.0"" xmlns=""http://www.w3.org/2001/10/synthesis"" xml:lang=""{_voiceOptions.Language}"">
                 <voice name=""{_voiceOptions.VoiceName}"">{message}</voice>
             </speak>";
             
-            var ssmlPlaySource = new SsmlSource(ssml);
-            var playOptions = new PlayToAllOptions(ssmlPlaySource)
-            {
-                OperationContext = Constants.DefaultOperationContext
-            };
+                var ssmlPlaySource = new SsmlSource(ssml);
+                var playOptions = new PlayToAllOptions(ssmlPlaySource)
+                {
+                    OperationContext = Constants.DefaultOperationContext
+                };
 
-            await callConnectionMedia.PlayToAllAsync(playOptions, cancellationToken);
+                await callConnectionMedia.PlayToAllAsync(playOptions, cancellationToken);
+            }
+            catch (Azure.RequestFailedException ex) when (ex.ErrorCode == "8501")
+            {
+                // Call is not in established state - this is expected during transfers or call ending
+                _logger.LogDebug("Cannot play audio, call not in established state: {Message}", ex.Message);
+                throw; // Re-throw so caller can handle appropriately
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to play message to call: {Message}", ex.Message);
+                throw;
+            }
         }
 
         #endregion
@@ -815,20 +864,20 @@ namespace ACSforMCS.Services
                 }
 
             ReturnDefault:
-                _logger.LogWarning("No valid agent activity found in message, returning default error response");
+                _logger.LogDebug("No valid agent activity found in message, returning silent error response");
                 return new AgentActivity()
                 {
                     Type = Constants.ErrorActivityType,
-                    Text = "Sorry, Something went wrong"
+                    Text = "SILENT_PARSING_ERROR" // This won't be played to users
                 };
             }
             catch (JsonException ex)
             {
-                _logger.LogWarning(ex, "Unexpected JSON format in agent activity: {Message}", ex.Message);
+                _logger.LogDebug(ex, "Unexpected JSON format in agent activity: {Message}", ex.Message);
                 return new AgentActivity()
                 {
                     Type = Constants.ErrorActivityType,
-                    Text = "Sorry, I couldn't process that response"
+                    Text = "SILENT_JSON_ERROR" // This won't be played to users
                 };
             }
         }
