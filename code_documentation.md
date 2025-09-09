@@ -106,11 +106,15 @@ The core orchestration service that manages the entire call lifecycle.
 
 **Key Methods:**
 - `StartConversationAsync()` - Initiates DirectLine conversation
+- `StartConversationWithTokenAsync()` - Alternative token-based conversation start
 - `SendMessageAsync()` - Forwards speech-to-text to bot
-- `ListenToBotWebSocketAsync()` - Processes real-time bot responses
+- `ListenToBotWebSocketAsync()` - Processes real-time bot responses with error filtering
 - `PlayToAllAsync()` - Converts text to speech and plays to caller
 - `TransferCallToPhoneNumberAsync()` - Handles call transfers
-- `ExtractLatestAgentActivity()` - Parses bot response messages
+- `AnnounceAndTransferCallAsync()` - Announces transfer to caller before execution
+- `ExtractLatestAgentActivity()` - Parses bot response messages with enhanced error handling
+- `CleanupCall()` - Cleans up resources when calls end
+- `RegisterTokenSource()` - Manages cancellation tokens for proper cleanup
 
 **Bot Communication Flow:**
 ```csharp
@@ -291,10 +295,13 @@ public class Conversation
 - WebSocket real-time communication
 
 **Error Handling:**
-- Retry policies for HTTP requests
-- Graceful WebSocket disconnection
-- Bot response error categorization
-- User-friendly error message conversion
+- Retry policies for HTTP requests with exponential backoff
+- Graceful WebSocket disconnection with proper cleanup
+- Bot response error categorization and filtering
+- User-friendly error message conversion with selective playback
+- Silent filtering of generic error messages ("An error has occurred")
+- Actionable error message identification and appropriate user feedback
+- Enhanced logging of all errors for debugging while protecting user experience
 
 ## Middleware
 
@@ -308,11 +315,14 @@ public class Conversation
 - Context-aware message routing
 
 **Processing Logic:**
-1. Validates WebSocket upgrade requests
-2. Extracts call identification headers
-3. Manages message assembly across frames
-4. Processes intermediate vs. final transcriptions
-5. Routes messages to appropriate conversations
+1. Validates WebSocket upgrade requests with correlation ID verification
+2. Extracts call identification headers (correlation ID, connection ID)
+3. Manages message assembly across frames with partial data buffering
+4. Processes intermediate vs. final transcriptions with smart audio cancellation
+5. Routes messages to appropriate conversations with context validation
+6. Implements proper timeout handling (20-minute WebSocket timeout)
+7. Handles message fragmentation across multiple WebSocket frames
+8. Provides detailed logging with call-specific scopes for better traceability
 
 ## Health Checks
 
@@ -389,13 +399,33 @@ public class Conversation
 }
 ```
 
-**Transfer Command:**
+**Transfer Command (Text Format):**
 ```json
 {
   "type": "message",
   "text": "TRANSFER:+1234567890:Transferring you to a specialist"
 }
 ```
+
+**Transfer Command (Structured Format):**
+```json
+{
+  "type": "transfer",
+  "value": {
+    "phoneNumber": "+1234567890",
+    "message": "Transferring you to a specialist"
+  }
+}
+```
+
+**Error Message (Filtered):**
+```json
+{
+  "type": "message",
+  "text": "An error has occurred, please try again"
+}
+```
+*Note: Generic error messages like this are automatically filtered and not played to callers*
 
 **End Conversation:**
 ```json
@@ -423,11 +453,21 @@ public class Conversation
 - Confirm Cognitive Services endpoint
 - Check language and region settings
 - Verify audio quality and encoding
+- Monitor intermediate vs. final transcription results
+- Check WebSocket message fragmentation handling
 
 **4. Call Transfer Failures**
 - Validate phone number format (E.164)
 - Check ACS phone number capabilities
 - Verify transfer permissions
+- Monitor transfer announcement playback
+- Check for transfer failure notifications and fallback messages
+
+**5. Error Message Issues**
+- Check if generic error messages are being filtered correctly
+- Verify that actionable errors (authentication, timeout) are still played
+- Monitor logs for silent error filtering behavior
+- Ensure error categorization is working properly
 
 ### Debugging Tips
 
@@ -438,11 +478,20 @@ public class Conversation
     "LogLevel": {
       "ACSforMCS": "Debug",
       "Azure.Communication": "Information",
-      "System.Net.Http.HttpClient": "Information"
+      "System.Net.Http.HttpClient": "Warning",
+      "Microsoft.AspNetCore.Hosting.Diagnostics": "Warning",
+      "System.Net.Http.HttpClient.DirectLine.LogicalHandler": "Warning"
     }
   }
 }
 ```
+
+**Enhanced Debugging Features:**
+- Call-specific logging scopes for better traceability
+- Detailed WebSocket message processing logs
+- Error filtering status logging
+- Bot communication state tracking
+- Transfer operation detailed logging
 
 **Health Check Monitoring:**
 ```bash
@@ -474,4 +523,32 @@ curl https://your-app.azurewebsites.net/health/ready
 
 ---
 
-**Note:** This documentation is current as of August 2025. For the latest updates and changes, refer to the project's changelog.md and commit history.
+## Recent Changes and Updates (September 2025)
+
+### Error Message Filtering
+- **Enhanced User Experience**: Added intelligent filtering of generic bot error messages
+- **Silent Error Handling**: Generic "An error has occurred" messages are now filtered out and not played to callers
+- **Selective Error Playback**: Only specific, actionable error messages (authentication, timeout) are played to users
+- **Improved Logging**: All filtered messages are still logged for debugging purposes
+
+### Enhanced Bot Communication
+- **Robust WebSocket Handling**: Improved WebSocket connection management with proper heartbeat
+- **Better Message Processing**: Enhanced message parsing with support for fragmented WebSocket messages
+- **Graceful Error Recovery**: Better handling of connection failures and bot response errors
+- **Alternative Authentication**: Added token-based DirectLine authentication as fallback method
+
+### Improved Call Transfer Features
+- **Enhanced Transfer Messaging**: Better user communication during call transfers
+- **Multiple Transfer Formats**: Support for both text-based (TRANSFER:number:message) and structured transfer commands
+- **Transfer Failure Handling**: Graceful handling and user notification of transfer failures
+- **Contextual Transfer Messages**: Custom messages for different transfer scenarios
+
+### Architecture Improvements
+- **Environment-Specific Configuration**: Enhanced support for Development vs Production BaseUri configuration
+- **Better Resource Cleanup**: Improved cleanup of call resources and cancellation tokens
+- **Enhanced Logging Scope**: Better correlation and tracing of call-specific operations
+- **Defensive Programming**: Added more null checks and exception handling throughout the codebase
+
+---
+
+**Note:** This documentation is current as of September 2025. For the latest updates and changes, refer to the project's changelog.md and commit history.
