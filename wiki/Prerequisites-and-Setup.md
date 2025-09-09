@@ -1,10 +1,22 @@
 # Prerequisites and Setup
 
-## 📋 Prerequisites Overview
+## Prerequisites Overview
 
-Before deploying ACSforMCS, ensure you have the following Azure resources and development tools ready. This comprehensive setup guide will walk you through each requirement with detailed instructions.
+Before deploying ACSforMCS, ensure you have the following Azure resources and development## Regional Considerations
 
-## 🔑 Required Azure Resources
+### **Supported Regions**
+
+Choose regions that support all required services:
+
+| Region | ACS | Cognitive Services | Recommended |
+|--------|-----|-------------------|-----------|
+| **West Europe** | ✅ | ✅ | ⭐ Europe/GDPR |
+| **East US** | ✅ | ✅ | ⭐ North America |
+| **Southeast Asia** | ✅ | ✅ | ⭐ Asia Pacific |
+| **Australia East** | ✅ | ✅ | Australia |
+| **UK South** | ✅ | ✅ | United Kingdom | This comprehensive setup guide will walk you through each requirement with detailed instructions.
+
+## Required Azure Resources
 
 ### 1. **Azure Subscription**
 - **Active Azure account** with sufficient permissions
@@ -38,7 +50,7 @@ Azure Communication Services provides the telephony infrastructure for handling 
    - Configure the number for **Voice calls**
    - Note the phone number in E.164 format (e.g., +1234567890)
 
-**📖 Detailed Guide**: [ACS Setup Documentation](https://docs.microsoft.com/azure/communication-services/quickstarts/create-communication-resource)
+**Detailed Guide**: [ACS Setup Documentation](https://docs.microsoft.com/azure/communication-services/quickstarts/create-communication-resource)
 
 ### 3. **Azure Cognitive Services**
 
@@ -60,7 +72,7 @@ Provides speech-to-text and text-to-speech capabilities for natural conversation
    - Use regions that support both ACS and Speech services
    - Recommended regions: **West Europe**, **East US**, **Southeast Asia**
 
-**📖 Detailed Guide**: [Cognitive Services Setup](https://learn.microsoft.com/azure/cognitive-services/cognitive-services-apis-create-account)
+**Detailed Guide**: [Cognitive Services Setup](https://learn.microsoft.com/azure/cognitive-services/cognitive-services-apis-create-account)
 
 ### 4. **Azure Key Vault**
 
@@ -116,9 +128,9 @@ Your conversational AI agent that handles the actual conversations.
    - Implement transfer logic using the `TRANSFER:number:message` format
    - Test responses through the web interface first
 
-**💡 Pro Tip**: Design your bot topics with voice interaction in mind - shorter responses work better than long text blocks.
+**Pro Tip**: Design your bot topics with voice interaction in mind - shorter responses work better than long text blocks.
 
-## 🛠️ Development Environment
+## Development Environment
 
 ### **Required Tools**
 
@@ -175,7 +187,7 @@ For other regions, use the standard endpoint:
 public const string DirectLineBaseUrl = "https://directline.botframework.com/v3/directline/";
 ```
 
-## 💰 Cost Planning
+## Cost Planning
 
 ### **Estimated Monthly Costs** (USD, varies by region)
 
@@ -188,13 +200,13 @@ public const string DirectLineBaseUrl = "https://directline.botframework.com/v3/
 | **Application Insights** | $0-5 | $10-50 |
 | **Total Estimate** | **$1-53** | **$213-960** |
 
-**💡 Cost Optimization Tips:**
+**Cost Optimization Tips:**
 - Use **free tiers** during development
 - Monitor usage with **Azure Cost Management**
 - Set up **spending alerts** to avoid surprises
 - Consider **reserved capacity** for production workloads
 
-## 🔒 Security Preparation
+## Security Preparation
 
 ### **Identity and Access Management**
 
@@ -220,7 +232,7 @@ public const string DirectLineBaseUrl = "https://directline.botframework.com/v3/
    - Configure SSL certificates for custom domains
    - Enable HSTS headers for security
 
-## ✅ Setup Verification Checklist
+## Setup Verification Checklist
 
 Before proceeding to deployment, verify:
 
@@ -248,15 +260,15 @@ Before proceeding to deployment, verify:
 - [ ] HTTPS endpoints planned for production
 - [ ] Security roles and permissions documented
 
-## 🚀 Next Steps
+## Next Steps
 
 Once all prerequisites are complete:
 
-1. **📖 Review Architecture** - Understand the [[Architecture Overview|Architecture-Overview]]
-2. **⚡ Quick Start** - Follow the [[Quick Start Guide|Quick-Start-Guide]] for immediate deployment
-3. **🏗️ Production Setup** - Use the [[Azure Web App Deployment|Azure-Web-App-Deployment]] guide
+1. **Review Architecture** - Understand the system design and components
+2. **Quick Start** - Follow immediate deployment steps for testing
+3. **Production Setup** - Use the [Azure Web App Deployment](Azure-Web-App-Deployment.md) guide
 
-## 🆘 Common Setup Issues
+## Common Setup Issues
 
 ### **Permission Errors**
 - Ensure you have **Contributor** role on the subscription
@@ -275,4 +287,4 @@ Once all prerequisites are complete:
 
 ---
 
-**✅ Prerequisites complete?** Ready to dive into the [[Quick Start Guide|Quick-Start-Guide]]!
+**Prerequisites complete?** Ready to dive into the [Azure Web App Deployment](Azure-Web-App-Deployment.md) guide!
