@@ -19,7 +19,7 @@ while leveraging the natural language understanding and dialog management featur
 
 <audio controls>
 
-<source src="https://github.com/holgerimbery/ACSFORMCS/raw/main//assets/call.mp4a" type="audio/mpeg">
+<source src="https://github.com/holgerimbery/ACSforMCS/raw/main/assets/call.m4a" type="audio/mpeg">
 
 Your browser does not support the audio element.
 
