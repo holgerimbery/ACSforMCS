@@ -29,7 +29,7 @@ Your browser does not support the audio element.
 ![](./assets/screen0.jpg)
 
 ## Documentation of the Project
-[Project Wiki](https://github.com/holgerimbery/ACSforMCS/wiki]
+[Project Wiki](https://github.com/holgerimbery/ACSforMCS/wiki)
 
 ## Discaimer
 For an enterprise-grade implementation, we suggest using Dynamics 365 Customer Service or Dynamics 365 Contact Center (while working with a non-Microsoft CRM solution).
