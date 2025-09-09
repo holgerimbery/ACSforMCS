@@ -29,7 +29,7 @@ Your browser does not support the audio element.
 ![](./assets/screen0.jpg)
 
 ## Documentation of the Code
-[Documentation](./code_documentation.md) for those who are interested in.
+[Documentation](wiki/Code-Documentation) for those who are interested in.
 
 ## Discaimer
 For an enterprise-grade implementation, we suggest using Dynamics 365 Customer Service or Dynamics 365 Contact Center (while working with a non-Microsoft CRM solution).
@@ -237,7 +237,7 @@ TRANSFER:+12345678:Message to User
 
 The solution leverages modern cloud-native principles to ensure scalability, resilience, and maintainability.
 
-For production-ready deployment instructions, refer to [Azure Web App Deployment Guide.md](Azure%20Web%20App%20Deployment%20Guide.md).
+For production-ready deployment instructions, refer to [Azure Web App Deployment Guide](wiki/Azure-Web-App-Deployment).
 
 ## Planned Enhancements
 
