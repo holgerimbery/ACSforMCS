@@ -41,13 +41,7 @@ This project is based on and inspired by architectural samples and technical gui
 
 The underlying concepts and design patterns follow established architectural principles for cloud-native telephony integrations with conversational AI systems. While we've built upon these foundations, we've tailored the solution to address specific requirements and use cases for voice-enabled customer service experiences.
 [link to original codebase](https://github.com/Azure-Samples/communication-services-dotnet-quickstarts/tree/main/CallAutomation_MCS_Sample). (We are happy to sync back our changes)
-
-## Planned Enhancements
-
-**Telephony Enhancements**   
-    - DTMF Recognition   
-    - Call Forward to a Teams User   
-      
+     
 ## Want to Contribute?
 Helping hands are welcome to enhance this telephony integration capability. If you're interested in contributing, please reach out to us with your ideas and PRs. 
 
