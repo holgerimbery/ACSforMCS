@@ -1,4 +1,4 @@
-## 2025-08-06 - v0.39
+## 2025-08-06 - v0.30
 - added error handling
 - deployment guide for azure web app
 
