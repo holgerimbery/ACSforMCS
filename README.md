@@ -10,6 +10,7 @@ The application creates a voice-based customer service experience by:
 3. Sending the transcribed content to a Copilot Studio agent via the Direct Line API
 4. Transforming the agent's responses into spoken audio using SSML (Speech Synthesis Markup Language)
 5. Delivering the synthesized speech back to the caller
+6. Transfer the call to an external phone number
 
 This solution provides an alternative communication channel for Copilot Studio agents.
 enabling organizations to extend their conversational AI capabilities to traditional phone systems
