@@ -70,7 +70,7 @@ ArgumentNullException.ThrowIfNullOrEmpty(appSettings.DirectLineSecret, nameof(ap
 
 #endregion
 
-#region Base URI Configuration
+# region Base URI Configuration
 
 // Handle base URI configuration with support for development tunneling and environment-specific values
 // This supports both local development (with VS tunnels) and production deployment scenarios
@@ -82,19 +82,11 @@ if (string.IsNullOrEmpty(baseUri))
     var environment = builder.Environment.EnvironmentName; // Gets "Development" or "Production"
     var secretName = $"BaseUri-{environment}";
     
-    try
+    baseUri = await GetBaseUriFromKeyVaultAsync(builder.Configuration, secretName);
+    
+    // Fall back to the general BaseUri configuration if environment-specific one is not available
+    if (string.IsNullOrEmpty(baseUri))
     {
-        // Attempt to retrieve the environment-specific BaseUri from Azure Key Vault
-        var keyVaultUri = new Uri(builder.Configuration["KeyVault:VaultUri"]);
-        var secretClient = new SecretClient(keyVaultUri, new DefaultAzureCredential());
-        var secret = secretClient.GetSecret(secretName);
-        baseUri = secret.Value.Value?.TrimEnd('/');
-        Console.WriteLine($"Loaded BaseUri from Key Vault secret '{secretName}'");
-    }
-    catch (Exception ex)
-    {
-        Console.WriteLine($"Warning: Failed to load {secretName} from Key Vault: {ex.Message}");
-        // Fall back to the general BaseUri configuration if environment-specific one is not available
         baseUri = appSettings.BaseUri?.TrimEnd('/');
     }
     
@@ -128,12 +120,46 @@ builder.Services.AddHttpClient("DirectLine", client => {
     
     // Set a reasonable timeout for API calls
     client.Timeout = TimeSpan.FromSeconds(30);
+    
+    // NEW: Configure connection pooling for better performance
+    client.DefaultRequestHeaders.ConnectionClose = false;
 })
-// Add Polly retry policy for handling transient HTTP errors
-// This implements exponential backoff with 3 retry attempts for failed requests
+// NEW: Configure connection pooling and performance settings
+.ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler()
+{
+    MaxConnectionsPerServer = 10, // Limit concurrent connections per server
+    UseCookies = false, // Disable cookies for better performance in API scenarios
+    UseProxy = false // Skip proxy detection for better performance
+})
+// Enhanced Polly retry policy with better logging and jitter
 .AddTransientHttpErrorPolicy(policy => 
-    policy.WaitAndRetryAsync(3, retryAttempt => 
-        TimeSpan.FromSeconds(Math.Pow(2, retryAttempt))));
+    policy.WaitAndRetryAsync(
+        retryCount: 3,
+        sleepDurationProvider: retryAttempt => 
+        {
+            // Add jitter to prevent thundering herd
+            var baseDelay = TimeSpan.FromSeconds(Math.Pow(2, retryAttempt));
+            var jitter = TimeSpan.FromMilliseconds(Random.Shared.Next(0, 1000));
+            return baseDelay.Add(jitter);
+        },
+        onRetry: (outcome, timespan, retryCount, context) =>
+        {
+            Console.WriteLine($"DirectLine retry attempt {retryCount} after {timespan.TotalMilliseconds}ms due to: {outcome.Exception?.Message ?? "HTTP error"}");
+        }));
+
+// NEW: Add dedicated HTTP client for health checks
+builder.Services.AddHttpClient("DirectLineHealth", client => {
+    client.BaseAddress = new Uri("https://europe.directline.botframework.com/");
+    client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+    client.Timeout = TimeSpan.FromSeconds(10); // Shorter timeout for health checks
+    client.DefaultRequestHeaders.ConnectionClose = false;
+})
+.ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler()
+{
+    MaxConnectionsPerServer = 5,
+    UseCookies = false,
+    UseProxy = false
+});
 
 // Register the main call automation service that orchestrates bot communication
 builder.Services.AddSingleton<CallAutomationService>();
@@ -432,3 +458,31 @@ app.MapHealthChecks("/health");
 
 // Start the application and begin listening for requests
 app.Run();
+
+// Helper method for async Key Vault operations
+static async Task<string?> GetBaseUriFromKeyVaultAsync(IConfiguration configuration, string secretName)
+{
+    try
+    {
+        // Attempt to retrieve the environment-specific BaseUri from Azure Key Vault
+        var keyVaultUriString = configuration["KeyVault:Endpoint"];
+        if (string.IsNullOrEmpty(keyVaultUriString))
+        {
+            Console.WriteLine($"Warning: KeyVault:Endpoint not configured");
+            return null;
+        }
+        
+        var keyVaultUri = new Uri(keyVaultUriString);
+        var secretClient = new SecretClient(keyVaultUri, new DefaultAzureCredential());
+        var secret = await secretClient.GetSecretAsync(secretName);
+        var baseUri = secret.Value.Value?.TrimEnd('/');
+        Console.WriteLine($"Loaded BaseUri from Key Vault secret '{secretName}'");
+        return baseUri;
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"Warning: Failed to load {secretName} from Key Vault: {ex.Message}");
+        // Return null to indicate failure - caller will handle fallback
+        return null;
+    }
+}
