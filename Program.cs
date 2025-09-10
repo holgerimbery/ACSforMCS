@@ -96,6 +96,9 @@ appSettings.BaseUri = baseUri;
 
 #endregion
 
+// Load Health Check API Key from Key Vault for production security
+string? healthCheckApiKey = null;
+
 #region Dependency Registration
 
 // Register Azure Communication Services client as a singleton
@@ -186,6 +189,16 @@ builder.Logging.AddFilter("System.Net.Http.HttpClient.DirectLine.LogicalHandler"
 #endregion
 
 var app = builder.Build();
+
+// Load Health Check API Key from Key Vault for production security
+if (builder.Environment.IsProduction())
+{
+    healthCheckApiKey = await GetSecretFromKeyVaultAsync(builder.Configuration, "HealthCheckApiKey");
+    if (string.IsNullOrEmpty(healthCheckApiKey))
+    {
+        Console.WriteLine("Warning: HealthCheckApiKey not found in Key Vault - health endpoints will be disabled");
+    }
+}
 
 #region Service Resolution
 
@@ -454,6 +467,67 @@ app.MapControllers();
 // This can be used by load balancers and monitoring systems to check service status
 app.MapHealthChecks("/health");
 
+// Add detailed health check endpoint for debugging (DEVELOPMENT ONLY for security)
+if (app.Environment.IsDevelopment())
+{
+    app.MapHealthChecks("/health/detailed", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions()
+    {
+        ResponseWriter = async (context, report) =>
+        {
+            context.Response.ContentType = "application/json";
+            var result = System.Text.Json.JsonSerializer.Serialize(new
+            {
+                status = report.Status.ToString(),
+                checks = report.Entries.Select(entry => new
+                {
+                    name = entry.Key,
+                    status = entry.Value.Status.ToString(),
+                    exception = entry.Value.Exception?.Message,
+                    data = entry.Value.Data,
+                    description = entry.Value.Description,
+                    duration = entry.Value.Duration
+                })
+            });
+            await context.Response.WriteAsync(result);
+        }
+    });
+}
+else
+{
+    // Production: Provide a secure health endpoint that requires authentication
+    app.MapHealthChecks("/health", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions()
+    {
+        ResponseWriter = async (context, report) =>
+        {
+            // Check for basic authentication or API key
+            if (string.IsNullOrEmpty(healthCheckApiKey) ||
+                !context.Request.Headers.ContainsKey("X-API-Key") ||
+                context.Request.Headers["X-API-Key"] != healthCheckApiKey)
+            {
+                context.Response.StatusCode = 401;
+                await context.Response.WriteAsync("Unauthorized");
+                return;
+            }
+
+            context.Response.ContentType = "application/json";
+            var result = System.Text.Json.JsonSerializer.Serialize(new
+            {
+                status = report.Status.ToString(),
+                timestamp = DateTime.UtcNow,
+                // Sanitized output - no sensitive details in production
+                checks = report.Entries.Select(entry => new
+                {
+                    name = entry.Key,
+                    status = entry.Value.Status.ToString(),
+                    // No exception details or internal data in production
+                    duration = entry.Value.Duration
+                })
+            });
+            await context.Response.WriteAsync(result);
+        }
+    }).RequireAuthorization(); // Add authorization requirement
+}
+
 #endregion
 
 // Start the application and begin listening for requests
@@ -483,6 +557,31 @@ static async Task<string?> GetBaseUriFromKeyVaultAsync(IConfiguration configurat
     {
         Console.WriteLine($"Warning: Failed to load {secretName} from Key Vault: {ex.Message}");
         // Return null to indicate failure - caller will handle fallback
+        return null;
+    }
+}
+
+static async Task<string?> GetSecretFromKeyVaultAsync(IConfiguration configuration, string secretName)
+{
+    try
+    {
+        var keyVaultUriString = configuration["KeyVault:Endpoint"];
+        if (string.IsNullOrEmpty(keyVaultUriString))
+        {
+            Console.WriteLine($"Warning: KeyVault:Endpoint not configured");
+            return null;
+        }
+        
+        var keyVaultUri = new Uri(keyVaultUriString);
+        var secretClient = new SecretClient(keyVaultUri, new DefaultAzureCredential());
+        var secret = await secretClient.GetSecretAsync(secretName);
+        var secretValue = secret.Value.Value;
+        Console.WriteLine($"Loaded secret '{secretName}' from Key Vault");
+        return secretValue;
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"Warning: Failed to load {secretName} from Key Vault: {ex.Message}");
         return null;
     }
 }

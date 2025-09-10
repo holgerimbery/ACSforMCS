@@ -30,7 +30,7 @@ namespace ACSforMCS.HealthChecks
         }
 
         /// <summary>
-        /// Performs the health check by attempting to ping the DirectLine service endpoint.
+        /// Performs the health check by attempting to start a conversation with the DirectLine service.
         /// This method tests connectivity and authentication with the Bot Framework DirectLine API.
         /// </summary>
         /// <param name="context">Health check context containing additional information about the check</param>
@@ -53,17 +53,17 @@ namespace ACSforMCS.HealthChecks
                 // Set up Bearer token authentication using the DirectLine secret
                 httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _directLineSecret);
                 
-                // Ping the DirectLine service using the Europe endpoint
-                // Note: Using Europe endpoint instead of global endpoint for regional compliance/performance
-                var response = await httpClient.GetAsync(
-                    //"https://directline.botframework.com/v3/directline/tokens/ping", // Global endpoint (commented out)
-                    "https://europe.directline.botframework.com/v3/directline/tokens/ping", // Europe-specific endpoint
+                // Test DirectLine service by attempting to start a conversation
+                // This is the correct DirectLine API endpoint that validates authentication
+                var response = await httpClient.PostAsync(
+                    "https://directline.botframework.com/v3/directline/conversations", // Correct DirectLine endpoint
+                    new StringContent("", System.Text.Encoding.UTF8, "application/json"),
                     cancellationToken);
 
                 // Check if the response indicates success (2xx status codes)
                 if (response.IsSuccessStatusCode)
                 {
-                    return HealthCheckResult.Healthy("DirectLine service is available");
+                    return HealthCheckResult.Healthy("DirectLine service is available and authenticated");
                 }
                 
                 // Service responded but with an error status code - mark as degraded
