@@ -5,13 +5,12 @@ using Microsoft.Extensions.Options;
 using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
-using Newtonsoft.Json;
-using JsonException = Newtonsoft.Json.JsonException;
 using System.Text.RegularExpressions;
 using System.Net.Http.Headers;
 using System.Collections.Concurrent;
 using System.Net.Sockets;
 using System.IO;
+using Newtonsoft.Json;
 
 namespace ACSforMCS.Services
 {
@@ -72,6 +71,12 @@ namespace ACSforMCS.Services
         /// Thread-safe store for managing cancellation tokens per call for proper cleanup
         /// </summary>
         private readonly ConcurrentDictionary<string, CancellationTokenSource> _cancellationTokenSources = new ConcurrentDictionary<string, CancellationTokenSource>();
+
+        /// <summary>
+        /// Compiled regex patterns for better performance when removing references from bot responses
+        /// </summary>
+        private static readonly Regex InlineRefRegex = new(@"\[\d+\]", RegexOptions.Compiled);
+        private static readonly Regex RefListRegex = new(@"\n\[\d+\]:.*\n?", RegexOptions.Compiled | RegexOptions.Multiline);
 
         #endregion
 
@@ -685,201 +690,282 @@ namespace ACSforMCS.Services
         /// Extracts and parses the latest agent activity from a DirectLine WebSocket message.
         /// This method handles the complex JSON structure of Bot Framework messages and extracts
         /// actionable content including regular messages, transfer commands, and conversation control signals.
+        /// Optimized for performance with System.Text.Json and pattern matching.
         /// </summary>
         /// <param name="rawMessage">The raw JSON message received from DirectLine WebSocket</param>
         /// <returns>An AgentActivity object containing the parsed activity type and content</returns>
         public AgentActivity ExtractLatestAgentActivity(string rawMessage)
         {
+            // Early validation to prevent unnecessary JSON parsing overhead
+            if (string.IsNullOrWhiteSpace(rawMessage))
+            {
+                _logger.LogDebug("Received null or empty message from DirectLine WebSocket");
+                return CreateSilentError();
+            }
+
+            // Quick format validation to avoid JSON parsing for obviously invalid messages  
+            var trimmed = rawMessage.TrimStart();
+            if (!trimmed.StartsWith('{'))
+            {
+                _logger.LogDebug("Message doesn't start with JSON object, skipping: {MessageStart}", 
+                    rawMessage.Length > 50 ? rawMessage.AsSpan(0, 50).ToString() + "..." : rawMessage);
+                return CreateSilentError();
+            }
+
             try
             {
                 // Log a sample of the message for debugging (truncate if too long to avoid log spam)
-                string sampleMessage = rawMessage.Length > 500 ? 
-                    rawMessage.Substring(0, 500) + "..." : 
-                    rawMessage;
-                _logger.LogDebug("Attempting to extract agent activity from message: {SampleMessage}", sampleMessage);
+                if (rawMessage.Length > 500)
+                {
+                    _logger.LogDebug("Attempting to extract agent activity from message: {SampleMessage}", 
+                        rawMessage.AsSpan(0, 500).ToString() + "...");
+                }
+                else
+                {
+                    _logger.LogDebug("Attempting to extract agent activity from message: {SampleMessage}", rawMessage);
+                }
                 
                 using var doc = JsonDocument.Parse(rawMessage);
 
                 // Validate the message structure
-                if (!doc.RootElement.TryGetProperty("activities", out var activities))
+                if (!doc.RootElement.TryGetProperty("activities", out var activities) ||
+                    activities.ValueKind != JsonValueKind.Array)
                 {
-                    _logger.LogWarning("No 'activities' property found in the message");
-                    goto ReturnDefault;
-                }
-                
-                if (activities.ValueKind != JsonValueKind.Array)
-                {
-                    _logger.LogWarning("The 'activities' property is not an array");
-                    goto ReturnDefault;
+                    _logger.LogWarning("Invalid message structure: missing or invalid 'activities' property");
+                    return CreateSilentError();
                 }
 
-                int activityCount = activities.GetArrayLength();
+                var activityCount = activities.GetArrayLength();
                 _logger.LogDebug("Found {Count} activities in the message", activityCount);
                 
                 if (activityCount == 0)
                 {
                     _logger.LogWarning("The activities array is empty");
-                    goto ReturnDefault;
+                    return CreateSilentError();
                 }
 
                 // Process activities in reverse order to get the most recent agent response
-                for (int i = activities.GetArrayLength() - 1; i >= 0; i--)
+                // Use Span for better performance when iterating
+                var activitiesArray = activities.EnumerateArray().ToArray();
+                for (int i = activitiesArray.Length - 1; i >= 0; i--)
                 {
-                    var activity = activities[i];
-
-                    if (!activity.TryGetProperty("type", out var type))
+                    var activity = activitiesArray[i];
+                    
+                    if (TryProcessActivity(activity, i, out var result))
                     {
-                        _logger.LogDebug("Activity at index {Index} has no 'type' property", i);
-                        continue;
-                    }
-
-                    string? typeValue = type.GetString();
-                    _logger.LogDebug("Activity at index {Index} has type: {Type}", i, typeValue);
-
-                    // Process message activities (the most common type)
-                    if (typeValue == Constants.MessageActivityType)
-                    {
-                        if (!activity.TryGetProperty("from", out var from))
-                        {
-                            _logger.LogDebug("Message activity at index {Index} has no 'from' property", i);
-                            continue;
-                        }
-
-                        if (!from.TryGetProperty("id", out var fromId))
-                        {
-                            _logger.LogDebug("Message activity at index {Index} has no 'from.id' property", i);
-                            continue;
-                        }
-
-                        string? fromIdValue = fromId.GetString();
-                        _logger.LogDebug("Message activity at index {Index} is from: {FromId}", i, fromIdValue);
-
-                        // Skip user messages - we only want agent responses
-                        if (fromIdValue == Constants.DefaultUserName)
-                        {
-                            _logger.LogDebug("Message activity at index {Index} is from user, not agent", i);
-                            continue;
-                        }
-
-                        // Extract message content
-                        string? textContent = null;
-                        if (activity.TryGetProperty("text", out var text))
-                        {
-                            textContent = text.GetString();
-                        }
-
-                        // Check for transfer command in text format (TRANSFER:phonenumber:message)
-                        if (textContent != null && textContent.StartsWith("TRANSFER:"))
-                        {
-                            var parts = textContent.Split(':', 3);
-                            if (parts.Length >= 2)
-                            {
-                                var phoneNumber = parts[1].Trim();
-                                var transferMessage = parts.Length >= 3 ? parts[2].Trim() : "Please hold while I transfer your call.";
-                                
-                                _logger.LogInformation("Transfer command received for phone number: {PhoneNumber}", phoneNumber);
-                                return new AgentActivity()
-                                {
-                                    Type = Constants.TransferActivityType,
-                                    Text = $"{phoneNumber}|{transferMessage}"
-                                };
-                            }
-                        }
-
-                        // Check for voice content first (preferred for speech synthesis)
-                        if (activity.TryGetProperty("speak", out var speak))
-                        {
-                            string? speakContent = speak.GetString();
-                            _logger.LogDebug("Voice content received: {SpeakContent}", speakContent);
-                            return new AgentActivity()
-                            {
-                                Type = Constants.MessageActivityType,
-                                Text = RemoveReferences(speakContent ?? string.Empty)
-                            };
-                        }
-
-                        // Fall back to text content
-                        if (!string.IsNullOrEmpty(textContent))
-                        {
-                            _logger.LogDebug("Text content received: {TextContent}", textContent);
-
-                            // Detect potential error messages in the content
-                            if (textContent.Contains("error") || 
-                                textContent.Contains("sorry") || 
-                                textContent.Contains("fail"))
-                            {
-                                return new AgentActivity()
-                                {
-                                    Type = Constants.ErrorActivityType,
-                                    Text = RemoveReferences(textContent)
-                                };
-                            }
-
-                            return new AgentActivity()
-                            {
-                                Type = Constants.MessageActivityType,
-                                Text = RemoveReferences(textContent)
-                            };
-                        }
-
-                        _logger.LogDebug("Message activity at index {Index} has neither 'speak' nor 'text' property", i);
-                    }
-                    // Handle end-of-conversation signals
-                    else if (typeValue == Constants.EndOfConversationActivityType)
-                    {
-                        _logger.LogInformation("EndOfConversation activity received");
-                        return new AgentActivity()
-                        {
-                            Type = Constants.EndOfConversationActivityType
-                        };
-                    }
-                    // Handle structured transfer activities
-                    else if (typeValue == "transfer")
-                    {
-                        string? phoneNumber = null;
-                        string? transferMessage = null;
-                        
-                        if (activity.TryGetProperty("value", out var transferValue))
-                        {
-                            if (transferValue.TryGetProperty("phoneNumber", out var phoneNumberProp))
-                            {
-                                phoneNumber = phoneNumberProp.GetString();
-                            }
-                            if (transferValue.TryGetProperty("message", out var messageProp))
-                            {
-                                transferMessage = messageProp.GetString();
-                            }
-                        }
-                        
-                        if (!string.IsNullOrEmpty(phoneNumber))
-                        {
-                            _logger.LogInformation("Structured transfer command received for phone number: {PhoneNumber}", phoneNumber);
-                            return new AgentActivity()
-                            {
-                                Type = Constants.TransferActivityType,
-                                Text = $"{phoneNumber}|{transferMessage ?? "Please hold while I transfer your call."}"
-                            };
-                        }
+                        return result;
                     }
                 }
 
-            ReturnDefault:
                 _logger.LogDebug("No valid agent activity found in message, returning silent error response");
-                return new AgentActivity()
-                {
-                    Type = Constants.ErrorActivityType,
-                    Text = "SILENT_PARSING_ERROR" // This won't be played to users
-                };
+                return CreateSilentError();
             }
-            catch (JsonException ex)
+            catch (System.Text.Json.JsonException ex)
             {
-                _logger.LogDebug(ex, "Unexpected JSON format in agent activity: {Message}", ex.Message);
-                return new AgentActivity()
-                {
-                    Type = Constants.ErrorActivityType,
-                    Text = "SILENT_JSON_ERROR" // This won't be played to users
-                };
+                _logger.LogDebug(ex, "JSON parsing error: {Message}", ex.Message);
+                return CreateSilentError();
             }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Unexpected error in ExtractLatestAgentActivity: {Message}", ex.Message);
+                return CreateSilentError();
+            }
+        }
+
+        /// <summary>
+        /// Tries to process a single activity and extract actionable content.
+        /// Uses pattern matching for better performance and readability.
+        /// </summary>
+        /// <param name="activity">The JSON activity element to process</param>
+        /// <param name="index">The index of the activity for logging</param>
+        /// <param name="result">The extracted activity result</param>
+        /// <returns>True if a valid activity was extracted, false otherwise</returns>
+        private bool TryProcessActivity(JsonElement activity, int index, out AgentActivity result)
+        {
+            result = new AgentActivity();
+            
+            if (!activity.TryGetProperty("type", out var typeElement))
+            {
+                _logger.LogDebug("Activity at index {Index} has no 'type' property", index);
+                return false;
+            }
+
+            var typeValue = typeElement.GetString();
+            _logger.LogDebug("Activity at index {Index} has type: {Type}", index, typeValue);
+
+            // Use pattern matching for better performance
+            return typeValue switch
+            {
+                Constants.MessageActivityType => TryProcessMessageActivity(activity, index, out result),
+                Constants.EndOfConversationActivityType => TryProcessEndOfConversation(out result),
+                "transfer" => TryProcessTransferActivity(activity, out result),
+                _ => false
+            };
+        }
+
+        /// <summary>
+        /// Processes message activities from the bot
+        /// </summary>
+        private bool TryProcessMessageActivity(JsonElement activity, int index, out AgentActivity result)
+        {
+            result = new AgentActivity();
+            
+            if (!activity.TryGetProperty("from", out var from) ||
+                !from.TryGetProperty("id", out var fromId))
+            {
+                _logger.LogDebug("Message activity at index {Index} has no valid 'from' property", index);
+                return false;
+            }
+
+            var fromIdValue = fromId.GetString();
+            _logger.LogDebug("Message activity at index {Index} is from: {FromId}", index, fromIdValue);
+
+            // Skip user messages - we only want agent responses
+            if (fromIdValue == Constants.DefaultUserName)
+            {
+                _logger.LogDebug("Message activity at index {Index} is from user, not agent", index);
+                return false;
+            }
+
+            // Check for transfer command in text format (TRANSFER:phonenumber:message)
+            if (activity.TryGetProperty("text", out var textElement))
+            {
+                var textContent = textElement.GetString();
+                if (!string.IsNullOrEmpty(textContent) && textContent.StartsWith("TRANSFER:", StringComparison.OrdinalIgnoreCase))
+                {
+                    return TryParseTransferCommand(textContent, out result);
+                }
+            }
+
+            // Check for voice content first (preferred for speech synthesis)
+            if (activity.TryGetProperty("speak", out var speak))
+            {
+                var speakContent = speak.GetString();
+                if (!string.IsNullOrEmpty(speakContent))
+                {
+                    _logger.LogDebug("Voice content received: {SpeakContent}", speakContent);
+                    result = new AgentActivity()
+                    {
+                        Type = Constants.MessageActivityType,
+                        Text = RemoveReferences(speakContent)
+                    };
+                    return true;
+                }
+            }
+
+            // Fall back to text content
+            if (activity.TryGetProperty("text", out var text))
+            {
+                var textContent = text.GetString();
+                if (!string.IsNullOrEmpty(textContent))
+                {
+                    _logger.LogDebug("Text content received: {TextContent}", textContent);
+
+                    // Detect potential error messages in the content
+                    var activityType = IsErrorMessage(textContent) ? Constants.ErrorActivityType : Constants.MessageActivityType;
+                    
+                    result = new AgentActivity()
+                    {
+                        Type = activityType,
+                        Text = RemoveReferences(textContent)
+                    };
+                    return true;
+                }
+            }
+
+            _logger.LogDebug("Message activity at index {Index} has neither 'speak' nor 'text' property", index);
+            return false;
+        }
+
+        /// <summary>
+        /// Processes end of conversation activities
+        /// </summary>
+        private bool TryProcessEndOfConversation(out AgentActivity result)
+        {
+            _logger.LogInformation("EndOfConversation activity received");
+            result = new AgentActivity()
+            {
+                Type = Constants.EndOfConversationActivityType
+            };
+            return true;
+        }
+
+        /// <summary>
+        /// Processes structured transfer activities
+        /// </summary>
+        private bool TryProcessTransferActivity(JsonElement activity, out AgentActivity result)
+        {
+            result = new AgentActivity();
+            
+            if (!activity.TryGetProperty("value", out var transferValue))
+            {
+                return false;
+            }
+            
+            var phoneNumber = transferValue.TryGetProperty("phoneNumber", out var phoneNumberProp) 
+                ? phoneNumberProp.GetString() : null;
+            var transferMessage = transferValue.TryGetProperty("message", out var messageProp) 
+                ? messageProp.GetString() : "Please hold while I transfer your call.";
+            
+            if (!string.IsNullOrEmpty(phoneNumber))
+            {
+                _logger.LogInformation("Structured transfer command received for phone number: {PhoneNumber}", phoneNumber);
+                result = new AgentActivity()
+                {
+                    Type = Constants.TransferActivityType,
+                    Text = $"{phoneNumber}|{transferMessage}"
+                };
+                return true;
+            }
+            
+            return false;
+        }
+
+        /// <summary>
+        /// Parses transfer commands from text content
+        /// </summary>
+        private bool TryParseTransferCommand(string textContent, out AgentActivity result)
+        {
+            result = new AgentActivity();
+            
+            var parts = textContent.Split(':', 3);
+            if (parts.Length >= 2)
+            {
+                var phoneNumber = parts[1].Trim();
+                var transferMessage = parts.Length >= 3 ? parts[2].Trim() : "Please hold while I transfer your call.";
+                
+                _logger.LogInformation("Transfer command received for phone number: {PhoneNumber}", phoneNumber);
+                result = new AgentActivity()
+                {
+                    Type = Constants.TransferActivityType,
+                    Text = $"{phoneNumber}|{transferMessage}"
+                };
+                return true;
+            }
+            
+            return false;
+        }
+
+        /// <summary>
+        /// Checks if a message content indicates an error
+        /// </summary>
+        private static bool IsErrorMessage(string textContent)
+        {
+            return textContent.Contains("error", StringComparison.OrdinalIgnoreCase) ||
+                   textContent.Contains("sorry", StringComparison.OrdinalIgnoreCase) ||
+                   textContent.Contains("fail", StringComparison.OrdinalIgnoreCase);
+        }
+
+        /// <summary>
+        /// Creates a silent error response that won't be played to users
+        /// </summary>
+        private static AgentActivity CreateSilentError()
+        {
+            return new AgentActivity()
+            {
+                Type = Constants.ErrorActivityType,
+                Text = "SILENT_PARSING_ERROR" // This won't be played to users
+            };
         }
 
         /// <summary>

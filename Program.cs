@@ -28,7 +28,7 @@ var builder = WebApplication.CreateBuilder(args);
 // Configure Azure Key Vault for secure configuration management
 // This allows storing sensitive values like connection strings and secrets in Azure Key Vault
 // instead of in configuration files or environment variables
-string keyVaultEndpoint = builder.Configuration["KeyVault:Endpoint"];
+string? keyVaultEndpoint = builder.Configuration["KeyVault:Endpoint"];
 if (!string.IsNullOrEmpty(keyVaultEndpoint))
 {
     // Add Azure Key Vault as a configuration provider using Managed Identity or DefaultAzureCredential
@@ -477,7 +477,7 @@ static async Task<string?> GetBaseUriFromKeyVaultAsync(IConfiguration configurat
         var secret = await secretClient.GetSecretAsync(secretName);
         var baseUri = secret.Value.Value?.TrimEnd('/');
         Console.WriteLine($"Loaded BaseUri from Key Vault secret '{secretName}'");
-        return baseUri;
+        return baseUri ?? throw new InvalidOperationException($"BaseUri secret '{secretName}' returned null or empty value");
     }
     catch (Exception ex)
     {
