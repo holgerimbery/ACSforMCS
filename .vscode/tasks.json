@@ -1,0 +1,179 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "build",
+      "command": "dotnet",
+      "type": "process",
+      "args": [
+        "build",
+        "${workspaceFolder}/ACSforMCS.csproj",
+        "/property:GenerateFullPaths=true",
+        "/consoleloggerparameters:NoSummary"
+      ],
+      "problemMatcher": "$msCompile"
+    },
+    {
+      "label": "Set Development BaseUri",
+      "type": "shell",
+      "command": "az",
+      "args": [
+        "keyvault", "secret", "set",
+        "--vault-name", "${input:keyVaultName}",
+        "--name", "BaseUri-Development",
+        "--value", "${input:devBaseUri}"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "Set Production BaseUri",
+      "type": "shell",
+      "command": "az",
+      "args": [
+        "keyvault", "secret", "set",
+        "--vault-name", "${input:keyVaultName}",
+        "--name", "BaseUri-Production",
+        "--value", "${input:prodBaseUri}"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "Set ACS Connection String",
+      "type": "shell",
+      "command": "az",
+      "args": [
+        "keyvault", "secret", "set",
+        "--vault-name", "${input:keyVaultName}",
+        "--name", "AcsConnectionString",
+        "--value", "${input:acsConnectionString}"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "Set Agent Phone Number",
+      "type": "shell",
+      "command": "az",
+      "args": [
+        "keyvault", "secret", "set",
+        "--vault-name", "${input:keyVaultName}",
+        "--name", "AgentPhoneNumber",
+        "--value", "${input:agentPhoneNumber}"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "Set Cognitive Service Endpoint",
+      "type": "shell",
+      "command": "az",
+      "args": [
+        "keyvault", "secret", "set",
+        "--vault-name", "${input:keyVaultName}",
+        "--name", "CognitiveServiceEndpoint",
+        "--value", "${input:cognitiveServiceEndpoint}"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "Set DirectLine Secret",
+      "type": "shell",
+      "command": "az",
+      "args": [
+        "keyvault", "secret", "set",
+        "--vault-name", "${input:keyVaultName}",
+        "--name", "DirectLineSecret",
+        "--value", "${input:directLineSecret}"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "Set Health Check API Key",
+      "type": "shell",
+      "command": "pwsh",
+      "args": [
+        "-Command",
+        "$apiKey = if ('${input:healthCheckApiKey}' -eq 'GENERATE') { -join ((1..32) | ForEach-Object { [char]((65..90) + (97..122) + (48..57) | Get-Random) }) } else { '${input:healthCheckApiKey}' }; Write-Host 'Setting Health Check API Key...' -ForegroundColor Green; az keyvault secret set --vault-name '${input:keyVaultName}' --name 'HealthCheckApiKey' --value $apiKey; Write-Host 'Health Check API Key set successfully!' -ForegroundColor Green; if ('${input:healthCheckApiKey}' -eq 'GENERATE') { Write-Host 'Generated API Key:' -ForegroundColor Yellow; Write-Host $apiKey -ForegroundColor Cyan }"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "View Current BaseUri Values",
+      "type": "shell",
+      "command": "pwsh",
+      "args": [
+        "-Command",
+        "Write-Host 'Development:' -ForegroundColor Blue; az keyvault secret show --vault-name '${input:keyVaultName}' --name 'BaseUri-Development' --query 'value' -o tsv; Write-Host 'Production:' -ForegroundColor Red; az keyvault secret show --vault-name '${input:keyVaultName}' --name 'BaseUri-Production' --query 'value' -o tsv"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "View All Key Vault Secrets",
+      "type": "shell",
+      "command": "pwsh",
+      "args": [
+        "-Command",
+        "Write-Host 'All Secrets in KeyVault: ${input:keyVaultName}' -ForegroundColor Green; $secrets = az keyvault secret list --vault-name '${input:keyVaultName}' --query '[].name' -o tsv; foreach ($secret in $secrets) { Write-Host \"$secret:\" -ForegroundColor Yellow; az keyvault secret show --vault-name '${input:keyVaultName}' --name $secret --query 'value' -o tsv }"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "View Health Check API Key",
+      "type": "shell",
+      "command": "pwsh",
+      "args": [
+        "-Command",
+        "Write-Host 'Health Check API Key:' -ForegroundColor Green; az keyvault secret show --vault-name '${input:keyVaultName}' --name 'HealthCheckApiKey' --query 'value' -o tsv"
+      ],
+      "problemMatcher": []
+    }
+  ],
+  "inputs": [
+    {
+      "id": "keyVaultName",
+      "description": "Azure Key Vault Name (e.g., kv-resource-base-name)",
+      "default": "kv-resource-base-name",
+      "type": "promptString"
+    },
+    {
+      "id": "devBaseUri",
+      "description": "Development BaseUri (e.g., https://your-devtunnel-url)",
+      "default": "https://your-devtunnel-url",
+      "type": "promptString"
+    },
+    {
+      "id": "prodBaseUri",
+      "description": "Production BaseUri (e.g., https://app-your-resource-base-name.azurewebsites.net)",
+      "default": "https://app-your-resource-base-name.azurewebsites.net",
+      "type": "promptString"
+    },
+    {
+      "id": "acsConnectionString",
+      "description": "ACS Connection String",
+      "default": "endpoint=https://your-acs-resource.communication.azure.com/;accesskey=your-access-key",
+      "type": "promptString"
+    },
+    {
+      "id": "agentPhoneNumber",
+      "description": "Agent Phone Number (e.g., +1234567890)",
+      "default": "+1234567890",
+      "type": "promptString"
+    },
+    {
+      "id": "cognitiveServiceEndpoint",
+      "description": "Cognitive Service Endpoint URL",
+      "default": "https://your-cognitive-service.cognitiveservices.azure.com/",
+      "type": "promptString"
+    },
+    {
+      "id": "directLineSecret",
+      "description": "DirectLine Secret Key",
+      "default": "your-directline-secret",
+      "type": "promptString"
+    },
+    {
+      "id": "healthCheckApiKey",
+      "description": "Health Check API Key (or type 'GENERATE' to auto-generate a secure key)",
+      "default": "GENERATE",
+      "type": "promptString"
+    }
+  ]
+}

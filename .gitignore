@@ -5,8 +5,6 @@ appsettings.json
 appsettings.Production.json
 appsettings.json
 appsettings.Development.json
-.vscode/tasks.json
-.vscode/launch.json
 publish/
 deployment.zip
 .wiki/
