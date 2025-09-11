@@ -1,14 +1,15 @@
-## 2025-08-06 - v0.40
+## 2025-09-11 - v0.40
+- full working as azure webapp
 - wiki
 - monitoring endpoints
 - swagger interface
 - performance enhancements
 
-## 2025-08-06 - v0.30
+## 2025-09-09 - v0.30
 - added error handling
 - deployment guide for azure web app
 
-## 2025-08-06 - v0.21
+## 2025-08-xx - v0.21
 - added in line comments to code and a overview documentation file
 
 ## 2025-08-xx - v0.2
