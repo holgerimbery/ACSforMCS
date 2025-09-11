@@ -167,6 +167,9 @@ builder.Services.AddHttpClient("DirectLineHealth", client => {
 // Register the main call automation service that orchestrates bot communication
 builder.Services.AddSingleton<CallAutomationService>();
 
+// Add memory cache service for SSML template caching and performance optimization
+builder.Services.AddMemoryCache();
+
 #endregion
 
 #region Health Checks
@@ -185,6 +188,10 @@ builder.Services.AddHealthChecks()
 builder.Logging.AddFilter("System.Net.Http.HttpClient", LogLevel.Warning);
 builder.Logging.AddFilter("Microsoft.AspNetCore.Hosting.Diagnostics", LogLevel.Warning);
 builder.Logging.AddFilter("System.Net.Http.HttpClient.DirectLine.LogicalHandler", LogLevel.Warning);
+
+// Reduce WebSocket message processing noise (set to Information for normal operation)
+builder.Logging.AddFilter("ACSforMCS.Services.CallAutomationService", LogLevel.Information);
+builder.Logging.AddFilter("ACSforMCS.Middleware.WebSocketMiddleware", LogLevel.Information);
 
 #endregion
 

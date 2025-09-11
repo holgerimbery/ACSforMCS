@@ -2,6 +2,7 @@ using Azure.Communication.CallAutomation;
 using Azure.Communication; 
 using ACSforMCS.Configuration;
 using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Caching.Memory;
 using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
@@ -68,6 +69,11 @@ namespace ACSforMCS.Services
         private readonly ConcurrentDictionary<string, CallContext> _callStore;
         
         /// <summary>
+        /// In-memory cache for storing frequently used SSML templates to improve performance
+        /// </summary>
+        private readonly IMemoryCache _memoryCache;
+        
+        /// <summary>
         /// Thread-safe store for managing cancellation tokens per call for proper cleanup
         /// </summary>
         private readonly ConcurrentDictionary<string, CancellationTokenSource> _cancellationTokenSources = new ConcurrentDictionary<string, CancellationTokenSource>();
@@ -97,7 +103,8 @@ namespace ACSforMCS.Services
             ILogger<CallAutomationService> logger,
             IOptions<AppSettings> appSettings,
             IOptions<VoiceOptions> voiceOptions,
-            ConcurrentDictionary<string, CallContext> callStore)
+            ConcurrentDictionary<string, CallContext> callStore,
+            IMemoryCache memoryCache)
         {
             _client = client ?? throw new ArgumentNullException(nameof(client));
             _httpClientFactory = httpClientFactory ?? throw new ArgumentNullException(nameof(httpClientFactory));
@@ -105,6 +112,7 @@ namespace ACSforMCS.Services
             _voiceOptions = voiceOptions?.Value ?? throw new ArgumentNullException(nameof(voiceOptions));
             _appSettings = appSettings?.Value ?? throw new ArgumentNullException(nameof(appSettings));
             _callStore = callStore ?? throw new ArgumentNullException(nameof(callStore));
+            _memoryCache = memoryCache ?? throw new ArgumentNullException(nameof(memoryCache));
             
             // Prepare URI configurations for webhooks and WebSocket connections
             _baseUri = _appSettings.BaseUri?.TrimEnd('/') ?? throw new ArgumentNullException(nameof(_appSettings.BaseUri));
@@ -364,10 +372,11 @@ namespace ACSforMCS.Services
 
                         string rawMessage = messageBuilder.ToString();
                         
-                        // Filter out empty or non-activity messages
-                        if (string.IsNullOrWhiteSpace(rawMessage) || !rawMessage.Contains("activities"))
+                        // Conservative filtering - only skip obviously non-actionable messages
+                        if (string.IsNullOrWhiteSpace(rawMessage) || 
+                            !rawMessage.Contains("activities"))
                         {
-                            _logger.LogDebug("Received empty or non-activity message from WebSocket");
+                            _logger.LogTrace("Skipping non-activity message from WebSocket");
                             continue;
                         }
                         
@@ -379,7 +388,15 @@ namespace ACSforMCS.Services
                         // Error responses - provide user-friendly feedback based on error type
                         if (agentActivity.Type == Constants.ErrorActivityType)
                         {
-                            _logger.LogWarning("Caught error response: {ErrorText}", agentActivity.Text);
+                            // Only log actual errors, not silent parsing issues
+                            if (agentActivity.Text != "SILENT_PARSING_ERROR")
+                            {
+                                _logger.LogWarning("Caught error response: {ErrorText}", agentActivity.Text);
+                            }
+                            else
+                            {
+                                _logger.LogDebug("Silent parsing error (normal WebSocket metadata)");
+                            }
                             
                             // Only play audio for specific, actionable errors - not generic parsing issues
                             try
@@ -546,10 +563,21 @@ namespace ACSforMCS.Services
         {
             try
             {
-                // Create SSML (Speech Synthesis Markup Language) for better voice control
-                var ssml = $@"<speak version=""1.0"" xmlns=""http://www.w3.org/2001/10/synthesis"" xml:lang=""{_voiceOptions.Language}"">
+                // Generate cache key based on message, voice name, and language for SSML caching
+                var cacheKey = $"ssml_{_voiceOptions.VoiceName}_{_voiceOptions.Language}_{message.GetHashCode()}";
+                
+                // Try to get cached SSML, or create and cache it if not found
+                var ssml = _memoryCache.GetOrCreate(cacheKey, entry =>
+                {
+                    // Set cache expiration to 1 hour for performance while allowing updates
+                    entry.AbsoluteExpirationRelativeToNow = TimeSpan.FromHours(1);
+                    entry.SlidingExpiration = TimeSpan.FromMinutes(30);
+                    
+                    // Create SSML (Speech Synthesis Markup Language) for better voice control
+                    return $@"<speak version=""1.0"" xmlns=""http://www.w3.org/2001/10/synthesis"" xml:lang=""{_voiceOptions.Language}"">
                 <voice name=""{_voiceOptions.VoiceName}"">{message}</voice>
             </speak>";
+                });
             
                 var ssmlPlaySource = new SsmlSource(ssml);
                 var playOptions = new PlayToAllOptions(ssmlPlaySource)
@@ -703,12 +731,11 @@ namespace ACSforMCS.Services
                 return CreateSilentError();
             }
 
-            // Quick format validation to avoid JSON parsing for obviously invalid messages  
+            // Basic format validation to avoid JSON parsing for obviously invalid messages  
             var trimmed = rawMessage.TrimStart();
             if (!trimmed.StartsWith('{'))
             {
-                _logger.LogDebug("Message doesn't start with JSON object, skipping: {MessageStart}", 
-                    rawMessage.Length > 50 ? rawMessage.AsSpan(0, 50).ToString() + "..." : rawMessage);
+                _logger.LogTrace("Message doesn't start with JSON object, skipping");
                 return CreateSilentError();
             }
 
@@ -944,6 +971,34 @@ namespace ACSforMCS.Services
             }
             
             return false;
+        }
+
+        /// <summary>
+        /// Optimized check to determine if a raw WebSocket message likely contains bot activities
+        /// without expensive JSON parsing. Uses string scanning for performance.
+        /// </summary>
+        /// <param name="rawMessage">Raw WebSocket message</param>
+        /// <returns>True if message likely contains actionable bot activities</returns>
+        private static bool ContainsActionableActivity(string rawMessage)
+        {
+            // Fast checks for common non-actionable message patterns
+            if (rawMessage.Length < 100 || // Too short to contain meaningful activities
+                rawMessage.Contains("\"watermark\"") || // DirectLine metadata
+                rawMessage.Contains("\"streamUrl\"") || // Connection info
+                rawMessage.Contains("\"heartbeat\"") || // Keepalive messages
+                !rawMessage.Contains("\"activities\"")) // No activities array
+            {
+                return false;
+            }
+            
+            // Check if message contains actual content (text OR speak)
+            // Note: Most bot messages have "text", voice-optimized might have "speak"
+            if (!rawMessage.Contains("\"text\"") && !rawMessage.Contains("\"speak\""))
+            {
+                return false;
+            }
+            
+            return true;
         }
 
         /// <summary>
