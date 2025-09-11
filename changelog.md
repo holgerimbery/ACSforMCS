@@ -1,3 +1,9 @@
+## 2025-08-06 - v0.40
+- wiki
+- monitoring endpoints
+- swagger interface
+- performance enhancements
+
 ## 2025-08-06 - v0.30
 - added error handling
 - deployment guide for azure web app
