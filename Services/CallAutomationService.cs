@@ -177,8 +177,8 @@ namespace ACSforMCS.Services
                     throw new InvalidOperationException("Failed to deserialize conversation response");
                 }
                 
-                _logger.LogInformation("Successfully started conversation with ID: {ConversationId}", 
-                    conversation.ConversationId);
+                _logger.LogInformation("Successfully started conversation with ID: {ConversationId}. Total active DirectLine conversations: {ActiveConversations}", 
+                    conversation.ConversationId, _callStore.Count);
                 
                 return conversation;
             }
@@ -327,7 +327,8 @@ namespace ACSforMCS.Services
             try
             {
                 await webSocket.ConnectAsync(new Uri(streamUrl), cancellationToken);
-                _logger.LogInformation("Connected to bot WebSocket at {StreamUrl}", streamUrl);
+                _logger.LogInformation("Connected to bot WebSocket at {StreamUrl}. Active WebSocket connections: {ActiveConnections}", 
+                    streamUrl, _callStore.Count);
 
                 // Set up periodic heartbeat to prevent connection timeouts
                 using var heartbeatTimer = new Timer(
@@ -1072,16 +1073,32 @@ namespace ACSforMCS.Services
         /// <param name="correlationId">The correlation ID of the call to clean up</param>
         public void CleanupCall(string correlationId)
         {
-            // Cancel any ongoing operations for this call
-            if (_cancellationTokenSources.TryRemove(correlationId, out var tokenSource))
+            if (string.IsNullOrEmpty(correlationId))
             {
-                tokenSource.Cancel();
-                tokenSource.Dispose();
+                _logger.LogWarning("CleanupCall called with null or empty correlation ID");
+                return;
             }
-            
-            // Remove call context from storage
-            _ = _callStore.TryRemove(correlationId, out _);
-            _logger.LogInformation("Cleaned up resources for call with correlation ID {CorrelationId}", correlationId);
+
+            try
+            {
+                // Cancel any ongoing operations for this call
+                if (_cancellationTokenSources.TryRemove(correlationId, out var tokenSource))
+                {
+                    tokenSource.Cancel();
+                    tokenSource.Dispose();
+                }
+                
+                // Remove call context from storage
+                var removed = _callStore.TryRemove(correlationId, out _);
+                
+                // Log cleanup with concurrent call metrics
+                _logger.LogInformation("Cleaned up resources for call with correlation ID {CorrelationId}. Removed: {Removed}, Remaining active calls: {ActiveCalls}", 
+                    correlationId, removed, _callStore.Count);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error during cleanup for correlation ID {CorrelationId}: {Message}", correlationId, ex.Message);
+            }
         }
 
         /// <summary>
@@ -1155,6 +1172,42 @@ namespace ACSforMCS.Services
         {
             public string? Token { get; set; }
             public int ExpiresIn { get; set; }
+        }
+
+        #endregion
+
+        #region Public Statistics Methods
+
+        /// <summary>
+        /// Gets the current number of active calls being handled by the service.
+        /// Used for monitoring and health checks.
+        /// </summary>
+        /// <returns>The count of active calls</returns>
+        public int GetActiveCallCount()
+        {
+            return _callStore.Count;
+        }
+
+        /// <summary>
+        /// Gets detailed statistics about active calls for monitoring purposes.
+        /// </summary>
+        /// <returns>Statistics object containing call details</returns>
+        public object GetCallStatistics()
+        {
+            var activeCalls = _callStore.ToArray(); // Thread-safe snapshot
+            
+            return new
+            {
+                totalActiveCalls = activeCalls.Length,
+                activeTokenSources = _cancellationTokenSources.Count,
+                callDetails = activeCalls.Select(kvp => new
+                {
+                    callConnectionId = kvp.Key,
+                    correlationId = kvp.Value.CorrelationId,
+                    conversationId = kvp.Value.ConversationId,
+                    hasConversation = !string.IsNullOrEmpty(kvp.Value.ConversationId)
+                }).ToList()
+            };
         }
 
         #endregion

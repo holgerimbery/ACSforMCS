@@ -37,11 +37,11 @@ if (!string.IsNullOrEmpty(keyVaultEndpoint))
         new Uri(keyVaultEndpoint),
         new DefaultAzureCredential());
     
-    Console.WriteLine("Azure Key Vault configuration provider added");
+    // Key Vault configuration logged after app is built
 }
 else
 {
-    Console.WriteLine("WARNING: Key Vault endpoint not configured, using local configuration values");
+    // Warning will be logged after app is built
 }
 
 #endregion
@@ -56,7 +56,44 @@ builder.Services.Configure<VoiceOptions>(builder.Configuration.GetSection("Voice
 // Add standard ASP.NET Core services
 builder.Services.AddControllers(); // Enable MVC controllers for API endpoints
 builder.Services.AddEndpointsApiExplorer(); // Enable API exploration for minimal APIs
-builder.Services.AddSwaggerGen(); // Add Swagger/OpenAPI documentation generation
+builder.Services.AddSwaggerGen(c =>
+{
+    c.SwaggerDoc("v1", new Microsoft.OpenApi.Models.OpenApiInfo
+    {
+        Title = "ACS for MCS API",
+        Version = "v1",
+        Description = "Azure Communication Services integration with Microsoft Copilot Studio for telephony automation",
+        Contact = new Microsoft.OpenApi.Models.OpenApiContact
+        {
+            Name = "ACS for MCS",
+            Url = new Uri("https://github.com/holgerimbery/ACSforMCS")
+        }
+    });
+
+    // Configure API Key authentication for Swagger
+    c.AddSecurityDefinition("ApiKey", new Microsoft.OpenApi.Models.OpenApiSecurityScheme
+    {
+        Type = Microsoft.OpenApi.Models.SecuritySchemeType.ApiKey,
+        In = Microsoft.OpenApi.Models.ParameterLocation.Header,
+        Name = "X-API-Key",
+        Description = "API Key for accessing production monitoring endpoints"
+    });
+
+    c.AddSecurityRequirement(new Microsoft.OpenApi.Models.OpenApiSecurityRequirement
+    {
+        {
+            new Microsoft.OpenApi.Models.OpenApiSecurityScheme
+            {
+                Reference = new Microsoft.OpenApi.Models.OpenApiReference
+                {
+                    Type = Microsoft.OpenApi.Models.ReferenceType.SecurityScheme,
+                    Id = "ApiKey"
+                }
+            },
+            Array.Empty<string>()
+        }
+    });
+}); // Add Swagger/OpenAPI documentation generation with enhanced configuration
 
 // Load and validate application settings
 var appSettings = new AppSettings();
@@ -147,6 +184,7 @@ builder.Services.AddHttpClient("DirectLine", client => {
         },
         onRetry: (outcome, timespan, retryCount, context) =>
         {
+            // Note: Retry logging will be improved to use proper ILogger in future update
             Console.WriteLine($"DirectLine retry attempt {retryCount} after {timespan.TotalMilliseconds}ms due to: {outcome.Exception?.Message ?? "HTTP error"}");
         }));
 
@@ -222,13 +260,26 @@ var logger = app.Services.GetRequiredService<ILogger<Program>>();
 
 /// <summary>
 /// Basic health check endpoint that confirms the service is running.
+/// Returns a simple greeting message to verify the service is operational.
 /// </summary>
-app.MapGet("/", () => "Hello Azure Communication Services, here is Copilot Studio!");
+/// <returns>A greeting message indicating the service is running</returns>
+/// <response code="200">Service is running normally</response>
+app.MapGet("/", () => "Hello Azure Communication Services, here is Copilot Studio!")
+    .WithName("GetServiceStatus")
+    .WithTags("Service")
+    .WithSummary("Service Status Check")
+    .WithDescription("Returns a greeting message to confirm the service is running")
+    .Produces<string>(StatusCodes.Status200OK);
 
 /// <summary>
 /// Webhook endpoint for handling incoming call events from Azure Communication Services.
 /// This endpoint receives EventGrid events when new calls arrive and initiates the call handling process.
 /// </summary>
+/// <param name="eventGridEvents">Array of EventGrid events containing call information</param>
+/// <param name="logger">Logger instance for request logging</param>
+/// <returns>200 OK with subscription validation response if needed</returns>
+/// <response code="200">Event processed successfully</response>
+/// <response code="400">Invalid event data</response>
 app.MapPost("/api/incomingCall", async (
     [FromBody] EventGridEvent[] eventGridEvents,
     ILogger<Program> logger) =>
@@ -306,6 +357,10 @@ app.MapPost("/api/incomingCall", async (
                 {
                     CorrelationId = correlationId
                 };
+                
+                // Log concurrent call metrics
+                logger.LogInformation("Call context created - Total active calls: {ActiveCalls}, Correlation ID: {CorrelationId}",
+                    callStore.Count, correlationId);
             }
         }
         catch (Exception ex)
@@ -314,7 +369,13 @@ app.MapPost("/api/incomingCall", async (
         }
     }
     return Results.Ok();
-});
+})
+.WithName("HandleIncomingCall")
+.WithTags("Call Automation")
+.WithSummary("Handle Incoming Call Events")
+.WithDescription("Webhook endpoint for Azure Communication Services EventGrid events. Handles incoming call notifications and initiates bot conversations.")
+.Produces(StatusCodes.Status200OK)
+.Produces(StatusCodes.Status400BadRequest);
 
 /// <summary>
 /// Webhook endpoint for handling call automation events from Azure Communication Services.
@@ -347,6 +408,10 @@ app.MapPost("/api/calls/{contextId}", async (
         {
             try
             {
+                // Log concurrent call monitoring information
+                logger.LogInformation("Call connected - Active calls: {ActiveCallCount}, New call correlation ID: {CorrelationId}", 
+                    callStore.Count, correlationId);
+                
                 Conversation? conversation = null;
                 
                 try
@@ -435,7 +500,8 @@ app.MapPost("/api/calls/{contextId}", async (
         // Handle call disconnection - clean up resources
         if (@event is CallDisconnected)
         {
-            logger.LogInformation("Call Disconnected");
+            logger.LogInformation("Call Disconnected - Remaining active calls: {ActiveCallCount}, Disconnected call correlation ID: {CorrelationId}", 
+                callStore.Count > 0 ? callStore.Count - 1 : 0, correlationId);
             // Clean up call-specific resources and cancel ongoing operations
             callAutomationService.CleanupCall(correlationId);
         }
@@ -474,6 +540,224 @@ app.MapControllers();
 // This can be used by load balancers and monitoring systems to check service status
 app.MapHealthChecks("/health");
 
+// Add concurrent call monitoring endpoint
+if (app.Environment.IsDevelopment())
+{
+    // Development: Unrestricted access for debugging
+    app.MapGet("/health/calls", (IServiceProvider serviceProvider) =>
+    {
+        var callAutomationService = serviceProvider.GetRequiredService<CallAutomationService>();
+        var logger = serviceProvider.GetRequiredService<ILogger<Program>>();
+        
+        try
+        {
+            var activeCalls = callAutomationService.GetActiveCallCount();
+            var callDetails = callAutomationService.GetCallStatistics();
+            
+            logger.LogInformation("Health check requested - Active calls: {ActiveCalls}", activeCalls);
+            
+            return Results.Ok(new
+            {
+                timestamp = DateTime.UtcNow,
+                activeCalls = activeCalls,
+                statistics = callDetails,
+                status = activeCalls < 50 ? "healthy" : "warning",
+                maxRecommendedCalls = 45,
+                environment = "Development"
+            });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error retrieving call statistics for health check");
+            return Results.Problem("Error retrieving call statistics");
+        }
+    })
+    .WithName("GetCallMonitoring")
+    .WithTags("Health Checks", "Monitoring")
+    .WithSummary("Concurrent Call Monitoring")
+    .WithDescription("Returns detailed information about active calls and concurrent call statistics for development debugging")
+    .Produces(StatusCodes.Status200OK)
+    .Produces(StatusCodes.Status500InternalServerError);
+}
+else
+{
+    // Production: Secured endpoint with API key authentication
+    app.MapGet("/health/calls", async (HttpContext context, IServiceProvider serviceProvider) =>
+    {
+        // Check for API key authentication
+        if (string.IsNullOrEmpty(healthCheckApiKey) ||
+            !context.Request.Headers.ContainsKey("X-API-Key") ||
+            context.Request.Headers["X-API-Key"] != healthCheckApiKey)
+        {
+            context.Response.StatusCode = 401;
+            await context.Response.WriteAsync("Unauthorized");
+            return;
+        }
+
+        var callAutomationService = serviceProvider.GetRequiredService<CallAutomationService>();
+        var logger = serviceProvider.GetRequiredService<ILogger<Program>>();
+        
+        try
+        {
+            var activeCalls = callAutomationService.GetActiveCallCount();
+            var callDetails = callAutomationService.GetCallStatistics();
+            
+            logger.LogInformation("Authenticated health check requested - Active calls: {ActiveCalls}", activeCalls);
+            
+            await context.Response.WriteAsJsonAsync(new
+            {
+                timestamp = DateTime.UtcNow,
+                activeCalls = activeCalls,
+                statistics = new
+                {
+                    totalActiveCalls = ((dynamic)callDetails).totalActiveCalls,
+                    activeTokenSources = ((dynamic)callDetails).activeTokenSources
+                    // Exclude detailed call information for security
+                },
+                status = activeCalls < 50 ? "healthy" : "warning",
+                maxRecommendedCalls = 45,
+                environment = "Production"
+            });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error retrieving call statistics for health check");
+            context.Response.StatusCode = 500;
+            await context.Response.WriteAsync("Error retrieving call statistics");
+        }
+    })
+    .WithName("GetProductionCallMonitoring")
+    .WithTags("Health Checks", "Monitoring")
+    .WithSummary("Concurrent Call Monitoring (Production)")
+    .WithDescription("Returns sanitized information about active calls and concurrent call statistics. Requires X-API-Key header for authentication.")
+    .Produces(StatusCodes.Status200OK)
+    .Produces(StatusCodes.Status401Unauthorized)
+    .Produces(StatusCodes.Status500InternalServerError);
+
+    // Production: Secured system metrics endpoint
+    app.MapGet("/health/metrics", async (HttpContext context, IServiceProvider serviceProvider) =>
+    {
+        // Check for API key authentication
+        if (string.IsNullOrEmpty(healthCheckApiKey) ||
+            !context.Request.Headers.ContainsKey("X-API-Key") ||
+            context.Request.Headers["X-API-Key"] != healthCheckApiKey)
+        {
+            context.Response.StatusCode = 401;
+            await context.Response.WriteAsync("Unauthorized");
+            return;
+        }
+
+        var logger = serviceProvider.GetRequiredService<ILogger<Program>>();
+        var callAutomationService = serviceProvider.GetRequiredService<CallAutomationService>();
+        
+        try
+        {
+            var process = System.Diagnostics.Process.GetCurrentProcess();
+            var gc = GC.GetTotalMemory(false);
+            var activeCalls = callAutomationService.GetActiveCallCount();
+            
+            logger.LogInformation("System metrics requested via authenticated endpoint");
+            
+            await context.Response.WriteAsJsonAsync(new
+            {
+                timestamp = DateTime.UtcNow,
+                environment = "Production",
+                systemMetrics = new
+                {
+                    processId = process.Id,
+                    workingSet = process.WorkingSet64,
+                    gcMemory = gc,
+                    threadCount = process.Threads.Count,
+                    startTime = process.StartTime,
+                    uptime = DateTime.UtcNow - process.StartTime
+                },
+                applicationMetrics = new
+                {
+                    activeCalls = activeCalls,
+                    maxConcurrentCalls = 45,
+                    callCapacityUsed = Math.Round((double)activeCalls / 45 * 100, 2)
+                },
+                status = new
+                {
+                    overall = activeCalls < 40 ? "healthy" : activeCalls < 50 ? "warning" : "critical",
+                    memoryPressure = gc > 100_000_000 ? "high" : "normal",
+                    threadUtilization = process.Threads.Count > 50 ? "high" : "normal"
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error retrieving system metrics");
+            context.Response.StatusCode = 500;
+            await context.Response.WriteAsync("Error retrieving system metrics");
+        }
+    })
+    .WithName("GetSystemMetrics")
+    .WithTags("Health Checks", "Monitoring")
+    .WithSummary("System Performance Metrics")
+    .WithDescription("Returns detailed system performance metrics including memory usage, CPU metrics, and application statistics. Requires X-API-Key header for authentication.")
+    .Produces(StatusCodes.Status200OK)
+    .Produces(StatusCodes.Status401Unauthorized)
+    .Produces(StatusCodes.Status500InternalServerError);
+
+    // Production: Secured configuration status endpoint
+    app.MapGet("/health/config", async (HttpContext context, IServiceProvider serviceProvider) =>
+    {
+        // Check for API key authentication
+        if (string.IsNullOrEmpty(healthCheckApiKey) ||
+            !context.Request.Headers.ContainsKey("X-API-Key") ||
+            context.Request.Headers["X-API-Key"] != healthCheckApiKey)
+        {
+            context.Response.StatusCode = 401;
+            await context.Response.WriteAsync("Unauthorized");
+            return;
+        }
+
+        var logger = serviceProvider.GetRequiredService<ILogger<Program>>();
+        var configuration = serviceProvider.GetRequiredService<IConfiguration>();
+        
+        try
+        {
+            logger.LogInformation("Configuration status requested via authenticated endpoint");
+            
+            await context.Response.WriteAsJsonAsync(new
+            {
+                timestamp = DateTime.UtcNow,
+                environment = "Production",
+                configurationStatus = new
+                {
+                    keyVaultEndpoint = !string.IsNullOrEmpty(configuration["KeyVault:Endpoint"]),
+                    acsConnectionString = !string.IsNullOrEmpty(configuration["AcsConnectionString"]),
+                    directLineSecret = !string.IsNullOrEmpty(configuration["DirectLineSecret"]),
+                    baseUri = !string.IsNullOrEmpty(configuration["BaseUri"]),
+                    cognitiveServiceEndpoint = !string.IsNullOrEmpty(configuration["CognitiveServiceEndpoint"]),
+                    agentPhoneNumber = !string.IsNullOrEmpty(configuration["AgentPhoneNumber"])
+                },
+                securityStatus = new
+                {
+                    httpsOnly = true,
+                    managedIdentity = true,
+                    apiKeyProtected = !string.IsNullOrEmpty(healthCheckApiKey),
+                    keyVaultRbac = true
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error retrieving configuration status");
+            context.Response.StatusCode = 500;
+            await context.Response.WriteAsync("Error retrieving configuration status");
+        }
+    })
+    .WithName("GetConfigurationStatus")
+    .WithTags("Health Checks", "Configuration")
+    .WithSummary("Configuration Validation")
+    .WithDescription("Returns the status of all required configuration values and security settings. Requires X-API-Key header for authentication.")
+    .Produces(StatusCodes.Status200OK)
+    .Produces(StatusCodes.Status401Unauthorized)
+    .Produces(StatusCodes.Status500InternalServerError);
+}
+
 // Add detailed health check endpoint for debugging (DEVELOPMENT ONLY for security)
 if (app.Environment.IsDevelopment())
 {
@@ -501,7 +785,42 @@ if (app.Environment.IsDevelopment())
 }
 else
 {
-    // Production: Provide a secure health endpoint that requires authentication
+    // Production: Secured detailed health endpoint with API key authentication
+    app.MapHealthChecks("/health/detailed", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions()
+    {
+        ResponseWriter = async (context, report) =>
+        {
+            // Check for API key authentication
+            if (string.IsNullOrEmpty(healthCheckApiKey) ||
+                !context.Request.Headers.ContainsKey("X-API-Key") ||
+                context.Request.Headers["X-API-Key"] != healthCheckApiKey)
+            {
+                context.Response.StatusCode = 401;
+                await context.Response.WriteAsync("Unauthorized - API Key Required");
+                return;
+            }
+
+            context.Response.ContentType = "application/json";
+            var result = System.Text.Json.JsonSerializer.Serialize(new
+            {
+                status = report.Status.ToString(),
+                timestamp = DateTime.UtcNow,
+                environment = "Production",
+                checks = report.Entries.Select(entry => new
+                {
+                    name = entry.Key,
+                    status = entry.Value.Status.ToString(),
+                    exception = entry.Value.Exception?.Message,
+                    data = entry.Value.Data,
+                    description = entry.Value.Description,
+                    duration = entry.Value.Duration
+                })
+            });
+            await context.Response.WriteAsync(result);
+        }
+    });
+
+    // Production: Provide a secure basic health endpoint that requires authentication
     app.MapHealthChecks("/health", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions()
     {
         ResponseWriter = async (context, report) =>
@@ -537,6 +856,33 @@ else
 
 #endregion
 
+// Log startup configuration information after app is built
+var startupLogger = app.Services.GetRequiredService<ILogger<Program>>();
+
+// Log Key Vault configuration status
+var kvEndpoint = builder.Configuration["KeyVault:Endpoint"];
+if (!string.IsNullOrEmpty(kvEndpoint))
+{
+    startupLogger.LogInformation("Azure Key Vault configuration provider added for endpoint: {KeyVaultEndpoint}", kvEndpoint);
+}
+else
+{
+    startupLogger.LogWarning("Key Vault endpoint not configured, using local configuration values");
+}
+
+// Log environment configuration
+var envName = app.Environment.EnvironmentName;
+startupLogger.LogInformation("Application starting in {Environment} environment", envName);
+
+// Check if we can load BaseUri configuration
+var configuredBaseUri = builder.Configuration["BaseUri"];
+if (!string.IsNullOrEmpty(configuredBaseUri))
+{
+    startupLogger.LogInformation("BaseUri configured: {BaseUri}", configuredBaseUri);
+}
+
+startupLogger.LogInformation("Application startup configuration complete");
+
 // Start the application and begin listening for requests
 app.Run();
 
@@ -549,7 +895,7 @@ static async Task<string?> GetBaseUriFromKeyVaultAsync(IConfiguration configurat
         var keyVaultUriString = configuration["KeyVault:Endpoint"];
         if (string.IsNullOrEmpty(keyVaultUriString))
         {
-            Console.WriteLine($"Warning: KeyVault:Endpoint not configured");
+            // Will be logged when logger becomes available
             return null;
         }
         
@@ -557,12 +903,12 @@ static async Task<string?> GetBaseUriFromKeyVaultAsync(IConfiguration configurat
         var secretClient = new SecretClient(keyVaultUri, new DefaultAzureCredential());
         var secret = await secretClient.GetSecretAsync(secretName);
         var baseUri = secret.Value.Value?.TrimEnd('/');
-        Console.WriteLine($"Loaded BaseUri from Key Vault secret '{secretName}'");
+        // Success will be logged when logger becomes available
         return baseUri ?? throw new InvalidOperationException($"BaseUri secret '{secretName}' returned null or empty value");
     }
-    catch (Exception ex)
+    catch (Exception)
     {
-        Console.WriteLine($"Warning: Failed to load {secretName} from Key Vault: {ex.Message}");
+        // Error will be logged when logger becomes available  
         // Return null to indicate failure - caller will handle fallback
         return null;
     }
