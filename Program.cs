@@ -61,12 +61,39 @@ builder.Services.AddSwaggerGen(c =>
     c.SwaggerDoc("v1", new Microsoft.OpenApi.Models.OpenApiInfo
     {
         Title = "ACS for MCS API",
-        Version = "v1",
-        Description = "Azure Communication Services integration with Microsoft Copilot Studio for telephony automation",
+        Version = "v1.0",
+        Description = @"
+# Azure Communication Services for Microsoft Copilot Studio
+
+A comprehensive telephony automation solution that integrates Azure Communication Services with Microsoft Copilot Studio.
+
+## Features
+- **Incoming Call Handling**: Automatically answers phone calls and connects them to your Copilot Studio agent
+- **Real-time Transcription**: Speech-to-text conversion using Azure Cognitive Services
+- **Bot Integration**: Seamless communication with Microsoft Copilot Studio via DirectLine
+- **Call Monitoring**: Comprehensive health checks and monitoring endpoints
+- **Scalable Architecture**: Built for enterprise-grade telephony automation
+
+## Security
+- Production endpoints require `X-API-Key` header authentication
+- Azure Key Vault integration for secure configuration management
+- Managed Identity for secure Azure resource access
+
+## Architecture
+```
+Phone Call → Azure Communication Services → Event Grid → ACS for MCS → DirectLine → Copilot Studio
+```
+",
         Contact = new Microsoft.OpenApi.Models.OpenApiContact
         {
-            Name = "ACS for MCS",
-            Url = new Uri("https://github.com/holgerimbery/ACSforMCS")
+            Name = "ACS for MCS Project",
+            Url = new Uri("https://github.com/holgerimbery/ACSforMCS"),
+            Email = "holger@imbery.de"
+        },
+        License = new Microsoft.OpenApi.Models.OpenApiLicense
+        {
+            Name = "MIT License",
+            Url = new Uri("https://github.com/holgerimbery/ACSforMCS/blob/main/LICENSE.md")
         }
     });
 
@@ -76,9 +103,55 @@ builder.Services.AddSwaggerGen(c =>
         Type = Microsoft.OpenApi.Models.SecuritySchemeType.ApiKey,
         In = Microsoft.OpenApi.Models.ParameterLocation.Header,
         Name = "X-API-Key",
-        Description = "API Key for accessing production monitoring endpoints"
+        Description = @"
+**API Key Authentication for Production Endpoints**
+
+In production, monitoring and health check endpoints require authentication via the `X-API-Key` header.
+
+**Usage:**
+```
+X-API-Key: your-health-check-api-key
+```
+
+**Note:** The API key is stored in Azure Key Vault as `HealthCheckApiKey` secret.
+Development endpoints do not require authentication for easier debugging.
+",
+        Scheme = "ApiKeyScheme"
     });
 
+    // Tag definitions for better organization
+    c.TagActionsBy(api => api.ActionDescriptor.RouteValues.ContainsKey("action") 
+        ? new[] { api.ActionDescriptor.RouteValues["action"] ?? "Default" }
+        : new[] { api.GroupName ?? "Default" });
+    
+    // Custom schema IDs to avoid conflicts
+    c.CustomSchemaIds(type => type.FullName?.Replace("+", "."));
+
+    // Add server information
+    c.AddServer(new Microsoft.OpenApi.Models.OpenApiServer
+    {
+        Url = "https://acsformcs.azurewebsites.net",
+        Description = "Production Server"
+    });
+    
+    if (builder.Environment.IsDevelopment())
+    {
+        c.AddServer(new Microsoft.OpenApi.Models.OpenApiServer
+        {
+            Url = "https://localhost:5252",
+            Description = "Development Server (Local)"
+        });
+    }
+
+    // Include XML comments if available
+    var xmlFile = $"{System.Reflection.Assembly.GetExecutingAssembly().GetName().Name}.xml";
+    var xmlPath = Path.Combine(AppContext.BaseDirectory, xmlFile);
+    if (File.Exists(xmlPath))
+    {
+        c.IncludeXmlComments(xmlPath);
+    }
+
+    // Add global security requirement for secured endpoints
     c.AddSecurityRequirement(new Microsoft.OpenApi.Models.OpenApiSecurityRequirement
     {
         {
@@ -608,7 +681,44 @@ if (app.Environment.IsDevelopment() || app.Environment.IsProduction())
 {
     // Enable Swagger UI for API documentation and testing
     app.UseSwagger();
-    app.UseSwaggerUI();
+    app.UseSwaggerUI(c =>
+    {
+        c.SwaggerEndpoint("/swagger/v1/swagger.json", "ACS for MCS API v1.0");
+        c.RoutePrefix = "swagger"; // Serve the Swagger UI at /swagger
+        c.DocumentTitle = "ACS for MCS API Documentation";
+        c.DisplayRequestDuration();
+        c.EnableTryItOutByDefault();
+        c.EnableFilter();
+        c.ShowExtensions();
+        c.EnableDeepLinking();
+        
+        // Custom CSS for better styling
+        c.InjectStylesheet("/swagger-ui/custom.css");
+        
+        // Add custom JavaScript for enhanced functionality
+        c.InjectJavascript("/swagger-ui/custom.js");
+        
+        // Configure OAuth if needed (currently using API Key)
+        c.OAuthClientId("swagger-ui");
+        c.OAuthAppName("ACS for MCS Swagger UI");
+        
+        // Show API key input prominently
+        c.DefaultModelsExpandDepth(1);
+        c.DefaultModelExpandDepth(1);
+        c.DocExpansion(Swashbuckle.AspNetCore.SwaggerUI.DocExpansion.List);
+        
+        // Custom header for API documentation
+        c.HeadContent = @"
+        <style>
+            .swagger-ui .topbar { background-color: #0078d4; }
+            .swagger-ui .topbar .topbar-wrapper .link { color: white; }
+            .swagger-ui .info .title { color: #0078d4; }
+        </style>
+        <script>
+            // Custom JavaScript can be added here for enhanced functionality
+            console.log('ACS for MCS API Documentation Loaded');
+        </script>";
+    });
 }
 
 // Enable authorization middleware (though not heavily used in this application)
