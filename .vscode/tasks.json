@@ -88,41 +88,125 @@
     {
       "label": "Set Health Check API Key",
       "type": "shell",
-      "command": "pwsh",
+      "command": "az",
       "args": [
-        "-Command",
-        "$apiKey = if ('${input:healthCheckApiKey}' -eq 'GENERATE') { -join ((1..32) | ForEach-Object { [char]((65..90) + (97..122) + (48..57) | Get-Random) }) } else { '${input:healthCheckApiKey}' }; Write-Host 'Setting Health Check API Key...' -ForegroundColor Green; az keyvault secret set --vault-name '${input:keyVaultName}' --name 'HealthCheckApiKey' --value $apiKey; Write-Host 'Health Check API Key set successfully!' -ForegroundColor Green; if ('${input:healthCheckApiKey}' -eq 'GENERATE') { Write-Host 'Generated API Key:' -ForegroundColor Yellow; Write-Host $apiKey -ForegroundColor Cyan }"
+        "keyvault", "secret", "set",
+        "--vault-name", "${input:keyVaultName}",
+        "--name", "HealthCheckApiKey",
+        "--value", "${input:healthCheckApiKey}"
       ],
       "problemMatcher": []
     },
     {
-      "label": "View Current BaseUri Values",
+      "label": "View Development BaseUri",
       "type": "shell",
-      "command": "pwsh",
+      "command": "az",
       "args": [
-        "-Command",
-        "Write-Host 'Development:' -ForegroundColor Blue; az keyvault secret show --vault-name '${input:keyVaultName}' --name 'BaseUri-Development' --query 'value' -o tsv; Write-Host 'Production:' -ForegroundColor Red; az keyvault secret show --vault-name '${input:keyVaultName}' --name 'BaseUri-Production' --query 'value' -o tsv"
+        "keyvault", "secret", "show",
+        "--vault-name", "${input:keyVaultName}",
+        "--name", "BaseUri-Development",
+        "--query", "value",
+        "--output", "tsv"
       ],
+      "options": {
+        "shell": {
+          "executable": "cmd.exe",
+          "args": ["/c"]
+        }
+      },
       "problemMatcher": []
     },
     {
-      "label": "View All Key Vault Secrets",
+      "label": "View Production BaseUri",
       "type": "shell",
-      "command": "pwsh",
+      "command": "az",
       "args": [
-        "-Command",
-        "Write-Host 'All Secrets in KeyVault: ${input:keyVaultName}' -ForegroundColor Green; $secrets = az keyvault secret list --vault-name '${input:keyVaultName}' --query '[].name' -o tsv; foreach ($secret in $secrets) { Write-Host \"$secret:\" -ForegroundColor Yellow; az keyvault secret show --vault-name '${input:keyVaultName}' --name $secret --query 'value' -o tsv }"
+        "keyvault", "secret", "show",
+        "--vault-name", "${input:keyVaultName}",
+        "--name", "BaseUri-Production",
+        "--query", "value",
+        "--output", "tsv"
       ],
+      "options": {
+        "shell": {
+          "executable": "cmd.exe",
+          "args": ["/c"]
+        }
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "List All Key Vault Secrets",
+      "type": "shell",
+      "command": "az",
+      "args": [
+        "keyvault", "secret", "list",
+        "--vault-name", "${input:keyVaultName}",
+        "--query", "[].{name:name,enabled:attributes.enabled}",
+        "--output", "table"
+      ],
+      "options": {
+        "shell": {
+          "executable": "cmd.exe",
+          "args": ["/c"]
+        }
+      },
       "problemMatcher": []
     },
     {
       "label": "View Health Check API Key",
       "type": "shell",
-      "command": "pwsh",
+      "command": "az",
       "args": [
-        "-Command",
-        "Write-Host 'Health Check API Key:' -ForegroundColor Green; az keyvault secret show --vault-name '${input:keyVaultName}' --name 'HealthCheckApiKey' --query 'value' -o tsv"
+        "keyvault", "secret", "show",
+        "--vault-name", "${input:keyVaultName}",
+        "--name", "HealthCheckApiKey",
+        "--query", "value",
+        "--output", "tsv"
       ],
+      "options": {
+        "shell": {
+          "executable": "cmd.exe",
+          "args": ["/c"]
+        }
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "View Any Key Vault Secret",
+      "type": "shell",
+      "command": "az",
+      "args": [
+        "keyvault", "secret", "show",
+        "--vault-name", "${input:keyVaultName}",
+        "--name", "${input:secretName}",
+        "--query", "value",
+        "--output", "tsv"
+      ],
+      "options": {
+        "shell": {
+          "executable": "cmd.exe",
+          "args": ["/c"]
+        }
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "View Secret with Details",
+      "type": "shell",
+      "command": "az",
+      "args": [
+        "keyvault", "secret", "show",
+        "--vault-name", "${input:keyVaultName}",
+        "--name", "${input:secretName}",
+        "--output", "json"
+      ],
+      "options": {
+        "shell": {
+          "executable": "cmd.exe",
+          "args": ["/c"]
+        }
+      },
       "problemMatcher": []
     }
   ],
@@ -171,8 +255,14 @@
     },
     {
       "id": "healthCheckApiKey",
-      "description": "Health Check API Key (or type 'GENERATE' to auto-generate a secure key)",
-      "default": "GENERATE",
+      "description": "Health Check API Key (32-character alphanumeric string)",
+      "default": "your-32-character-api-key-here",
+      "type": "promptString"
+    },
+    {
+      "id": "secretName",
+      "description": "Key Vault Secret Name to view",
+      "default": "AcsConnectionString",
       "type": "promptString"
     }
   ]
