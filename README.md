@@ -21,11 +21,6 @@ while leveraging the natural language understanding and dialog management featur
 
 https://github.com/user-attachments/assets/c3f3c304-f743-4eb3-9f28-dd22338489c1
 
-
-
-
-![](./assets/screen0.jpg)
-
 ## Documentation of the Project
 [Project Wiki](https://github.com/holgerimbery/ACSforMCS/wiki)
 
