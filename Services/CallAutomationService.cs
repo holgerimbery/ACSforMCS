@@ -1113,6 +1113,16 @@ namespace ACSforMCS.Services
         }
 
         /// <summary>
+        /// Gets the count of active token sources for monitoring purposes.
+        /// This indicates how many calls currently have active WebSocket connections.
+        /// </summary>
+        /// <returns>The number of active token sources</returns>
+        public int GetActiveTokenSourceCount()
+        {
+            return _cancellationTokenSources.Count;
+        }
+
+        /// <summary>
         /// Obtains a temporary authentication token from DirectLine API.
         /// This method is used by the token-based authentication flow.
         /// </summary>

@@ -109,27 +109,36 @@ ArgumentNullException.ThrowIfNullOrEmpty(appSettings.DirectLineSecret, nameof(ap
 
 # region Base URI Configuration
 
-// Handle base URI configuration with support for development tunneling and environment-specific values
+// Handle base URI configuration with clear precedence and proper error handling
 // This supports both local development (with VS tunnels) and production deployment scenarios
 var baseUri = Environment.GetEnvironmentVariable("VS_TUNNEL_URL")?.TrimEnd('/');
 if (string.IsNullOrEmpty(baseUri))
 {
-    // Get environment-specific BaseUri from Key Vault
-    // This allows different URLs for Development vs Production environments
+    // Get environment-specific BaseUri from Key Vault (ONLY source for deployed environments)
+    // This ensures each environment has its own dedicated configuration
     var environment = builder.Environment.EnvironmentName; // Gets "Development" or "Production"
     var secretName = $"BaseUri-{environment}";
     
     baseUri = await GetBaseUriFromKeyVaultAsync(builder.Configuration, secretName);
     
-    // Fall back to the general BaseUri configuration if environment-specific one is not available
+    // No fallback to avoid configuration conflicts like DevTunnel URLs persisting in general secrets
+    // Each environment MUST have its own BaseUri-{Environment} secret in Key Vault
     if (string.IsNullOrEmpty(baseUri))
     {
-        baseUri = appSettings.BaseUri?.TrimEnd('/');
+        throw new InvalidOperationException($"BaseUri configuration missing. Required Key Vault secret '{secretName}' not found or empty. " +
+            $"Environment: {environment}. Please ensure the secret exists and contains the correct URL for this environment.");
     }
-    
-    ArgumentNullException.ThrowIfNullOrEmpty(baseUri, "BaseUri not found in Key Vault or configuration");
 }
+
+// Log the source and value for debugging (without exposing the full URL in logs)
+var source = Environment.GetEnvironmentVariable("VS_TUNNEL_URL") != null ? "VS_TUNNEL_URL environment variable" : $"Key Vault secret 'BaseUri-{builder.Environment.EnvironmentName}'";
+Console.WriteLine($"✅ BaseUri loaded from: {source}");
+
 appSettings.BaseUri = baseUri;
+
+// Update the AppSettings configuration in the DI container to include the BaseUri
+// This ensures that injected AppSettings instances have the correct BaseUri value
+builder.Services.Configure<AppSettings>(settings => settings.BaseUri = baseUri);
 
 #endregion
 
@@ -185,6 +194,7 @@ builder.Services.AddHttpClient("DirectLine", client => {
         onRetry: (outcome, timespan, retryCount, context) =>
         {
             // Note: Retry logging will be improved to use proper ILogger in future update
+                // Note: Retry logging will be improved to use proper ILogger in future update
             Console.WriteLine($"DirectLine retry attempt {retryCount} after {timespan.TotalMilliseconds}ms due to: {outcome.Exception?.Message ?? "HTTP error"}");
         }));
 
@@ -284,17 +294,23 @@ app.MapPost("/api/incomingCall", async (
     [FromBody] EventGridEvent[] eventGridEvents,
     ILogger<Program> logger) =>
 {
+    logger.LogInformation("IncomingCall webhook received with {EventCount} events", eventGridEvents.Length);
+    
     foreach (var eventGridEvent in eventGridEvents)
     {
+        logger.LogInformation("Processing event: Type={EventType}, Subject={Subject}", 
+            eventGridEvent.EventType, eventGridEvent.Subject);
         logger.LogInformation("Incoming Call event received : {EventGridEvent}", JsonConvert.SerializeObject(eventGridEvent));
 
         // Handle EventGrid system events (like subscription validation)
         if (eventGridEvent.TryGetSystemEventData(out object eventData))
         {
+            logger.LogInformation("System event detected: {EventDataType}", eventData.GetType().Name);
             // Handle the subscription validation event required by EventGrid
             // This is sent when setting up the webhook subscription
             if (eventData is SubscriptionValidationEventData subscriptionValidationEventData)
             {
+                logger.LogInformation("Subscription validation event - returning validation code");
                 var responseData = new SubscriptionValidationResponse
                 {
                     ValidationResponse = subscriptionValidationEventData.ValidationCode
@@ -305,6 +321,7 @@ app.MapPost("/api/incomingCall", async (
         
         try
         {
+            logger.LogInformation("Parsing incoming call event data");
             // Parse the incoming call event data
             var jsonNode = JsonNode.Parse(eventGridEvent.Data);
             if (jsonNode == null)
@@ -322,8 +339,11 @@ app.MapPost("/api/incomingCall", async (
                 continue;
             }
 
+            logger.LogInformation("Processing call with context: {IncomingCallContext}", incomingCallContext);
+
             // Generate a unique callback URI for this call's events
             var callbackUri = callAutomationService.GetCallbackUri();
+            logger.LogInformation("Generated callback URI: {CallbackUri}", callbackUri);
             
             // Configure call answering with AI capabilities
             var answerCallOptions = new AnswerCallOptions(incomingCallContext, callbackUri)
@@ -343,12 +363,14 @@ app.MapPost("/api/incomingCall", async (
                 }
             };
 
+            logger.LogInformation("Answering call with ACS client");
             // Answer the incoming call with the configured options
             AnswerCallResult answerCallResult = await client.AnswerCallAsync(answerCallOptions);
+            logger.LogInformation("Call answered successfully");
 
             // Store the call context for later reference
             var correlationId = answerCallResult?.CallConnectionProperties.CorrelationId;
-            logger.LogInformation("Correlation Id: {CorrelationId}", correlationId);
+            logger.LogInformation("Call answered - Correlation Id: {CorrelationId}", correlationId);
 
             if (correlationId != null)
             {
@@ -365,9 +387,12 @@ app.MapPost("/api/incomingCall", async (
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Answer call exception: {Message}", ex.Message);
+            logger.LogError(ex, "Answer call exception - Message: {ErrorMessage}, StackTrace: {StackTrace}", 
+                ex.Message, ex.StackTrace);
         }
     }
+    
+    logger.LogInformation("IncomingCall webhook processing completed");
     return Results.Ok();
 })
 .WithName("HandleIncomingCall")
@@ -409,25 +434,49 @@ app.MapPost("/api/calls/{contextId}", async (
             try
             {
                 // Log concurrent call monitoring information
-                logger.LogInformation("Call connected - Active calls: {ActiveCallCount}, New call correlation ID: {CorrelationId}", 
+                logger.LogInformation("📞 Call connected - Active calls: {ActiveCallCount}, New call correlation ID: {CorrelationId}", 
                     callStore.Count, correlationId);
                 
                 Conversation? conversation = null;
                 
                 try
                 {
+                    logger.LogInformation("🤖 Starting DirectLine conversation for call {CorrelationId}", correlationId);
+                    
                     // Attempt to start a DirectLine conversation with the bot
                     conversation = await callAutomationService.StartConversationAsync();
+                    
+                    logger.LogInformation("✅ DirectLine conversation created successfully: ConversationId={ConversationId}, StreamUrl={HasStreamUrl}", 
+                        conversation?.ConversationId, !string.IsNullOrEmpty(conversation?.StreamUrl));
                 }
                 catch (HttpRequestException ex) when (ex.Message.Contains("403"))
                 {
                     // If the primary method fails with authentication issues, try the token-based approach
-                    logger.LogWarning("Regular StartConversationAsync failed with 403, trying token method");
-                    conversation = await callAutomationService.StartConversationWithTokenAsync();
+                    logger.LogWarning("⚠️ Regular StartConversationAsync failed with 403, trying token method for call {CorrelationId}: {Error}", 
+                        correlationId, ex.Message);
+                    
+                    try
+                    {
+                        conversation = await callAutomationService.StartConversationWithTokenAsync();
+                        logger.LogInformation("✅ Token-based DirectLine conversation created: ConversationId={ConversationId}", 
+                            conversation?.ConversationId);
+                    }
+                    catch (Exception tokenEx)
+                    {
+                        logger.LogError(tokenEx, "❌ Both DirectLine authentication methods failed for call {CorrelationId}", correlationId);
+                        throw;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    logger.LogError(ex, "❌ DirectLine conversation creation failed for call {CorrelationId}: {Error}", correlationId, ex.Message);
+                    throw;
                 }
                 
                 if (conversation == null || string.IsNullOrEmpty(conversation.ConversationId))
                 {
+                    logger.LogError("❌ Failed to get valid conversation for call {CorrelationId}: conversation={IsNull}, conversationId={ConversationId}", 
+                        correlationId, conversation == null, conversation?.ConversationId ?? "NULL");
                     throw new InvalidOperationException("Failed to get valid conversation");
                 }
                 
@@ -436,30 +485,62 @@ app.MapPost("/api/calls/{contextId}", async (
                 if (callStore.ContainsKey(correlationId))
                 {
                     callStore[correlationId].ConversationId = conversationId;
+                    logger.LogInformation("🔗 Associated conversation {ConversationId} with call {CorrelationId}", conversationId, correlationId);
+                }
+                else
+                {
+                    logger.LogWarning("⚠️ Call {CorrelationId} not found in call store when associating conversation", correlationId);
                 }
 
                 // Start listening for bot responses asynchronously
                 var cts = new CancellationTokenSource();
                 callAutomationService.RegisterTokenSource(correlationId, cts);
+                logger.LogInformation("📡 Registered token source for call {CorrelationId}, active token sources: {ActiveCount}", 
+                    correlationId, callAutomationService.GetActiveTokenSourceCount());
                 
                 // Validate that we have a WebSocket URL for real-time bot communication
                 if (string.IsNullOrEmpty(conversation.StreamUrl))
                 {
-                    logger.LogError("StreamUrl is null or empty, cannot listen to bot");
+                    logger.LogError("❌ StreamUrl is null or empty for call {CorrelationId}, cannot listen to bot", correlationId);
                 }
                 else
                 {
+                    logger.LogInformation("🔄 Starting bot WebSocket listener for call {CorrelationId}, StreamUrl: {StreamUrl}", 
+                        correlationId, conversation.StreamUrl);
+                    
                     // Start the bot listener in a background task
-                    _ = Task.Run(() => callAutomationService.ListenToBotWebSocketAsync(
-                        conversation.StreamUrl, callConnection, cts.Token));
+                    _ = Task.Run(async () => 
+                    {
+                        try
+                        {
+                            await callAutomationService.ListenToBotWebSocketAsync(conversation.StreamUrl, callConnection, cts.Token);
+                        }
+                        catch (Exception ex)
+                        {
+                            logger.LogError(ex, "❌ WebSocket listener failed for call {CorrelationId}: {Error}", correlationId, ex.Message);
+                        }
+                    });
                 }
 
                 // Send initial greeting message to the bot to start the conversation
-                await callAutomationService.SendMessageAsync(conversationId, "Hi");
+                logger.LogInformation("💬 Sending initial greeting to bot for call {CorrelationId}", correlationId);
+                try
+                {
+                    await callAutomationService.SendMessageAsync(conversationId, "Hi");
+                    logger.LogInformation("✅ Initial greeting sent successfully for call {CorrelationId}", correlationId);
+                }
+                catch (Exception ex)
+                {
+                    logger.LogError(ex, "❌ Failed to send initial greeting for call {CorrelationId}: {Error}", correlationId, ex.Message);
+                }
             }
             catch (Exception ex)
             {
-                logger.LogError(ex, "Error processing CallConnected event: {Message}", ex.Message);
+                logger.LogError(ex, "❌ CRITICAL: Error processing CallConnected event for call {CorrelationId}: {Message}", correlationId, ex.Message);
+                
+                // Log additional debugging information
+                logger.LogError("🔍 CallConnected debugging info - Call store count: {CallStoreCount}, Active token sources: {TokenSources}", 
+                    callStore.Count, callAutomationService.GetActiveTokenSourceCount());
             }
         }
 
@@ -536,13 +617,15 @@ app.UseAuthorization();
 // Map controller routes for any additional API controllers
 app.MapControllers();
 
-// Add health check endpoint for monitoring system health
-// This can be used by load balancers and monitoring systems to check service status
-app.MapHealthChecks("/health");
+// Health check endpoints are configured below based on environment
+// This avoids duplicate registrations that cause AmbiguousMatchException
 
 // Add concurrent call monitoring endpoint
 if (app.Environment.IsDevelopment())
 {
+    // Development: Basic health check endpoint (unrestricted access)
+    app.MapHealthChecks("/health");
+    
     // Development: Unrestricted access for debugging
     app.MapGet("/health/calls", (IServiceProvider serviceProvider) =>
     {
@@ -715,6 +798,7 @@ else
 
         var logger = serviceProvider.GetRequiredService<ILogger<Program>>();
         var configuration = serviceProvider.GetRequiredService<IConfiguration>();
+        var appSettings = serviceProvider.GetRequiredService<IOptions<AppSettings>>().Value;
         
         try
         {
@@ -729,7 +813,7 @@ else
                     keyVaultEndpoint = !string.IsNullOrEmpty(configuration["KeyVault:Endpoint"]),
                     acsConnectionString = !string.IsNullOrEmpty(configuration["AcsConnectionString"]),
                     directLineSecret = !string.IsNullOrEmpty(configuration["DirectLineSecret"]),
-                    baseUri = !string.IsNullOrEmpty(configuration["BaseUri"]),
+                    baseUri = !string.IsNullOrEmpty(appSettings.BaseUri),
                     cognitiveServiceEndpoint = !string.IsNullOrEmpty(configuration["CognitiveServiceEndpoint"]),
                     agentPhoneNumber = !string.IsNullOrEmpty(configuration["AgentPhoneNumber"])
                 },
@@ -756,6 +840,128 @@ else
     .Produces(StatusCodes.Status200OK)
     .Produces(StatusCodes.Status401Unauthorized)
     .Produces(StatusCodes.Status500InternalServerError);
+
+    // DIAGNOSTIC: Bot conversation debugging endpoint
+    app.MapGet("/health/bot-debug", async (HttpContext context, IServiceProvider serviceProvider) =>
+    {
+        // Check for API key authentication
+        if (string.IsNullOrEmpty(healthCheckApiKey) ||
+            !context.Request.Headers.ContainsKey("X-API-Key") ||
+            context.Request.Headers["X-API-Key"] != healthCheckApiKey)
+        {
+            context.Response.StatusCode = 401;
+            await context.Response.WriteAsync("Unauthorized");
+            return;
+        }
+
+        var logger = serviceProvider.GetRequiredService<ILogger<Program>>();
+        var callAutomationService = serviceProvider.GetRequiredService<CallAutomationService>();
+        var configuration = serviceProvider.GetRequiredService<IConfiguration>();
+        var appSettings = serviceProvider.GetRequiredService<IOptions<AppSettings>>().Value;
+        
+        try
+        {
+            logger.LogInformation("Bot conversation debug status requested");
+            
+            // Test DirectLine conversation creation
+            string? testConversationId = null;
+            string? testStreamUrl = null;
+            Exception? testError = null;
+            
+            try
+            {
+                var testConversation = await callAutomationService.StartConversationAsync();
+                testConversationId = testConversation?.ConversationId;
+                testStreamUrl = testConversation?.StreamUrl;
+            }
+            catch (Exception ex)
+            {
+                testError = ex;
+            }
+
+            await context.Response.WriteAsJsonAsync(new
+            {
+                timestamp = DateTime.UtcNow,
+                environment = "Production",
+                directLineTest = new
+                {
+                    testConversationCreated = !string.IsNullOrEmpty(testConversationId),
+                    conversationId = testConversationId,
+                    streamUrlReceived = !string.IsNullOrEmpty(testStreamUrl),
+                    streamUrl = testStreamUrl,
+                    testError = testError?.Message
+                },
+                configuration = new
+                {
+                    directLineSecret = !string.IsNullOrEmpty(configuration["DirectLineSecret"]),
+                    baseUri = appSettings.BaseUri,
+                    keyVaultEndpoint = configuration["KeyVault:Endpoint"]
+                },
+                activeCalls = new
+                {
+                    totalCalls = callStore.Count,
+                    activeTokenSources = callAutomationService.GetActiveTokenSourceCount(),
+                    callDetails = callStore.Select(kvp => new {
+                        correlationId = kvp.Key,
+                        conversationId = kvp.Value.ConversationId,
+                        hasConversation = !string.IsNullOrEmpty(kvp.Value.ConversationId)
+                    }).ToArray()
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error in bot debug endpoint");
+            context.Response.StatusCode = 500;
+            await context.Response.WriteAsync($"Error: {ex.Message}");
+        }
+    })
+    .WithName("GetBotDebugStatus")
+    .WithTags("Monitoring", "Debug");
+
+    // DIAGNOSTIC: Real-time conversation monitoring
+    app.MapGet("/health/conversations", async (HttpContext context, IServiceProvider serviceProvider) =>
+    {
+        // Check for API key authentication
+        if (string.IsNullOrEmpty(healthCheckApiKey) ||
+            !context.Request.Headers.ContainsKey("X-API-Key") ||
+            context.Request.Headers["X-API-Key"] != healthCheckApiKey)
+        {
+            context.Response.StatusCode = 401;
+            await context.Response.WriteAsync("Unauthorized");
+            return;
+        }
+
+        var logger = serviceProvider.GetRequiredService<ILogger<Program>>();
+        
+        try
+        {
+            await context.Response.WriteAsJsonAsync(new
+            {
+                timestamp = DateTime.UtcNow,
+                activeCalls = callStore.Count,
+                conversations = callStore.Select(kvp => new {
+                    correlationId = kvp.Key,
+                    conversationId = kvp.Value.ConversationId ?? "NOT_CREATED",
+                    conversationStarted = !string.IsNullOrEmpty(kvp.Value.ConversationId)
+                }).ToArray(),
+                summary = new
+                {
+                    totalCalls = callStore.Count,
+                    callsWithConversations = callStore.Count(kvp => !string.IsNullOrEmpty(kvp.Value.ConversationId)),
+                    callsWithoutConversations = callStore.Count(kvp => string.IsNullOrEmpty(kvp.Value.ConversationId))
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error in conversations endpoint");
+            context.Response.StatusCode = 500;
+            await context.Response.WriteAsync($"Error: {ex.Message}");
+        }
+    })
+    .WithName("GetConversationsStatus")
+    .WithTags("Monitoring", "Debug");
 }
 
 // Add detailed health check endpoint for debugging (DEVELOPMENT ONLY for security)
@@ -851,7 +1057,7 @@ else
             });
             await context.Response.WriteAsync(result);
         }
-    }).RequireAuthorization(); // Add authorization requirement
+    }); // Authentication is handled manually in the ResponseWriter above
 }
 
 #endregion
@@ -921,7 +1127,8 @@ static async Task<string?> GetSecretFromKeyVaultAsync(IConfiguration configurati
         var keyVaultUriString = configuration["KeyVault:Endpoint"];
         if (string.IsNullOrEmpty(keyVaultUriString))
         {
-            Console.WriteLine($"Warning: KeyVault:Endpoint not configured");
+            // Use a logging approach that will appear in Azure Web App logs
+            System.Diagnostics.Debug.WriteLine($"Warning: KeyVault:Endpoint not configured");
             return null;
         }
         
@@ -929,12 +1136,12 @@ static async Task<string?> GetSecretFromKeyVaultAsync(IConfiguration configurati
         var secretClient = new SecretClient(keyVaultUri, new DefaultAzureCredential());
         var secret = await secretClient.GetSecretAsync(secretName);
         var secretValue = secret.Value.Value;
-        Console.WriteLine($"Loaded secret '{secretName}' from Key Vault");
+        System.Diagnostics.Debug.WriteLine($"Loaded secret '{secretName}' from Key Vault");
         return secretValue;
     }
     catch (Exception ex)
     {
-        Console.WriteLine($"Warning: Failed to load {secretName} from Key Vault: {ex.Message}");
+        System.Diagnostics.Debug.WriteLine($"Warning: Failed to load {secretName} from Key Vault: {ex.Message}");
         return null;
     }
 }
