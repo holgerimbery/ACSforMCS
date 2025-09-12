@@ -1,258 +1,405 @@
-#!/usr/bin/env pwsh
+#Requires -Version 7.0
+
 <#
 .SYNOPSIS
-    Displays the current environment configuration of the ACS for MCS application
+    Displays the current environment configuration and status of the ACS for MCS application.
+
 .DESCRIPTION
-    This script shows the current environment status by:
-    - Checking the ASPNETCORE_ENVIRONMENT setting
-    - Displaying key configuration values
-    - Testing endpoint accessibility
-    - Showing security configuration
-    - Providing environment summary
+    This script provides comprehensive environment status information by:
+    - Checking Azure CLI authentication and project configuration
+    - Retrieving and displaying current environment settings
+    - Testing endpoint accessibility and health status
+    - Showing security configuration and available features
+    - Providing detailed environment summary and usage instructions
+
 .EXAMPLE
     .\show-environment.ps1
+    Display complete environment status and configuration.
+
+.NOTES
+    Requirements:
+    - Azure CLI must be installed and authenticated
+    - .NET SDK must be installed for user secrets access
+    - PowerShell 7.0 or later
+    - Proper Key Vault configuration via setup-configuration.ps1
 #>
 
-# Script configuration
+[CmdletBinding()]
+param()
+
+# Enable strict mode and stop on errors
+Set-StrictMode -Version 3.0
 $ErrorActionPreference = "Stop"
 $InformationPreference = "Continue"
 
-Write-Information "ACS for MCS - Current Environment Status"
-Write-Information ("=" * 60)
+# Script configuration
+$ProjectFile = "ACSforMCS.csproj"
 
-try {
-    # Check if Azure CLI is installed and logged in
-    Write-Information "INFO: Checking Azure CLI authentication..."
-    $azAccount = az account show --output json 2>$null | ConvertFrom-Json
-    if (!$azAccount) {
-        throw "Please login to Azure CLI first: az login"
-    }
-    Write-Information "SUCCESS: Authenticated as: $($azAccount.user.name)"
+function Write-Header {
+    param([string]$Title)
+    Write-Information ""
+    Write-Information "========================================" 
+    Write-Information $Title
+    Write-Information "========================================" 
+}
+
+function Write-Success {
+    param([string]$Message)
+    Write-Host "✓ $Message" -ForegroundColor Green
+}
+
+function Write-Warning {
+    param([string]$Message)
+    Write-Host "⚠ $Message" -ForegroundColor Yellow
+}
+
+function Write-ErrorMessage {
+    param([string]$Message)
+    Write-Host "✗ $Message" -ForegroundColor Red
+}
+
+function Test-Prerequisites {
+    Write-Header "CHECKING PREREQUISITES"
     
-    # Find project file
-    $projectPath = Get-ChildItem -Path (Get-Location) -Filter "*.csproj" | Select-Object -First 1
-    if (!$projectPath) {
-        throw "No .csproj file found in current directory"
-    }
-    Write-Information "SUCCESS: Project found: $($projectPath.Name)"
+    $issues = @()
     
-    # Get Key Vault endpoint from user secrets
-    $keyVaultEndpoint = dotnet user-secrets list --project $projectPath.FullName | Where-Object { $_ -match "KeyVault:Endpoint\s*=\s*(.+)" }
-    if (!$keyVaultEndpoint) {
-        throw "KeyVault:Endpoint not found in user secrets. Please run setup script first."
+    # Check if we're in the right directory
+    if (-not (Test-Path $ProjectFile)) {
+        $issues += "Project file '$ProjectFile' not found. Run this script from the project root directory."
+    } else {
+        Write-Success "Project file found: $ProjectFile"
     }
     
-    $keyVaultName = ($keyVaultEndpoint -split '=')[1].Trim() -replace 'https://([^.]+)\..*', '$1'
-    Write-Information "INFO: Key Vault: $keyVaultName"
-    
-    # Detect app name from Key Vault name
-    $appName = $keyVaultName -replace '^kv-', '' -replace '-.*$', ''
-    if (!$appName) {
-        throw "Could not detect app name from Key Vault name: $keyVaultName"
+    # Check Azure CLI authentication
+    try {
+        $account = az account show --output json 2>$null | ConvertFrom-Json
+        Write-Success "Azure account: $($account.user.name) (Subscription: $($account.name))"
+    } catch {
+        $issues += "Azure CLI not authenticated. Run 'az login' first."
     }
-    Write-Information "SUCCESS: Detected app name: $appName"
+    
+    # Check user secrets configuration
+    try {
+        $secretsOutput = dotnet user-secrets list --project $ProjectFile 2>$null
+        $hasKeyVaultEndpoint = $secretsOutput | Where-Object { $_ -match "KeyVault:Endpoint" }
+        if ($hasKeyVaultEndpoint) {
+            Write-Success "User secrets configured with Key Vault endpoint"
+        } else {
+            $issues += "Key Vault endpoint not configured. Run 'setup-configuration.ps1' first."
+        }
+    } catch {
+        $issues += "Could not access user secrets. Ensure .NET SDK is installed."
+    }
+    
+    if ($issues.Count -gt 0) {
+        Write-Header "PREREQUISITE ISSUES FOUND"
+        foreach ($issue in $issues) {
+            Write-ErrorMessage $issue
+        }
+        throw "Prerequisites not met. Please resolve the issues above."
+    }
+    
+    Write-Success "All prerequisites met!"
+}
+
+function Get-KeyVaultConfiguration {
+    try {
+        $secretsOutput = dotnet user-secrets list --project $ProjectFile 2>$null
+        $endpointLine = $secretsOutput | Where-Object { $_ -match "KeyVault:Endpoint\s*=\s*(.+)" }
+        if ($endpointLine) {
+            $endpoint = $matches[1].Trim()
+            if ($endpoint -match "https://([^.]+)\.vault\.azure\.net/?") {
+                return $matches[1]
+            }
+        }
+    } catch {
+        throw "Could not retrieve Key Vault configuration from user secrets"
+    }
+    
+    throw "Key Vault endpoint not found in user secrets. Run setup-configuration.ps1 first."
+}
+
+function Get-ApplicationInfo {
+    param([string]$KeyVaultName)
+    
+    Write-Header "RETRIEVING APPLICATION INFORMATION"
+    
+    # Extract app name from Key Vault name (following naming convention)
+    $appName = $KeyVaultName -replace '^kv-', '' -replace '-.*$', ''
+    if (-not $appName) {
+        throw "Could not detect app name from Key Vault name: $KeyVaultName"
+    }
+    Write-Success "Detected app name: $appName"
     
     # Find resource group
-    Write-Information "INFO: Finding resource group for app: $appName"
-    $resourceGroup = az webapp list --query "[?name=='$appName'].resourceGroup" --output tsv
-    if (!$resourceGroup) {
-        throw "Could not find resource group for app: $appName"
+    try {
+        $resourceGroup = az webapp list --query "[?name=='$appName'].resourceGroup" --output tsv 2>$null
+        if (-not $resourceGroup) {
+            throw "Could not find resource group for app: $appName"
+        }
+        Write-Success "Resource group: $resourceGroup"
+    } catch {
+        throw "Failed to retrieve resource group information. Check app name and Azure permissions."
     }
-    Write-Information "INFO: Resource group: $resourceGroup"
-    
-    # Get current environment
-    Write-Information ""
-    Write-Information "INFO: Retrieving current environment configuration..."
-    $environmentSetting = az webapp config appsettings list --name $appName --resource-group $resourceGroup --query "[?name=='ASPNETCORE_ENVIRONMENT'].value" --output tsv
-    
-    if (!$environmentSetting) {
-        Write-Warning "WARNING: ASPNETCORE_ENVIRONMENT not set - defaulting to Production"
-        $environmentSetting = "Production"
-    }
-    
-    Write-Information "SUCCESS: Current Environment: $environmentSetting"
     
     # Get app URL
     $appUrl = "https://$appName.azurewebsites.net"
-    Write-Information "INFO: Application URL: $appUrl"
+    Write-Success "Application URL: $appUrl"
     
-    # Get key configuration settings
-    Write-Information ""
-    Write-Information "INFO: Key Configuration Settings:"
-    
-    $healthCheckApiKey = az webapp config appsettings list --name $appName --resource-group $resourceGroup --query "[?name=='HealthCheckApiKey'].value" --output tsv
-    if ($healthCheckApiKey) {
-        Write-Information "  - Health Check API Key: Configured"
-    } else {
-        Write-Information "  - Health Check API Key: Not configured"
+    return @{
+        AppName = $appName
+        ResourceGroup = $resourceGroup
+        AppUrl = $appUrl
     }
+}
+
+function Get-EnvironmentConfiguration {
+    param(
+        [string]$AppName,
+        [string]$ResourceGroup,
+        [string]$KeyVaultName
+    )
     
-    # Check web app configuration
-    $webAppConfig = az webapp config show --name $appName --resource-group $resourceGroup --output json | ConvertFrom-Json
-    Write-Information "  - Always On: $($webAppConfig.alwaysOn)"
-    Write-Information "  - Web Sockets: $($webAppConfig.webSocketsEnabled)"
-    Write-Information "  - HTTP/2: $($webAppConfig.http20Enabled)"
-    Write-Information "  - HTTPS Only: $($webAppConfig.httpsOnly)"
+    Write-Header "CURRENT ENVIRONMENT CONFIGURATION"
     
-    # Test endpoints based on environment
-    Write-Information ""
-    Write-Information "INFO: Testing endpoint accessibility..."
-    
-    # Test main application
+    # Get current environment setting
     try {
-        $mainResponse = Invoke-WebRequest -Uri $appUrl -Method Get -TimeoutSec 10 -ErrorAction SilentlyContinue
-        if ($mainResponse.StatusCode -eq 200) {
-            Write-Information "SUCCESS: Main application accessible (Status: $($mainResponse.StatusCode))"
+        $environmentSetting = az webapp config appsettings list --name $AppName --resource-group $ResourceGroup --query "[?name=='ASPNETCORE_ENVIRONMENT'].value" --output tsv 2>$null
+        
+        if (-not $environmentSetting) {
+            Write-Warning "ASPNETCORE_ENVIRONMENT not set - defaulting to Production"
+            $environmentSetting = "Production"
         } else {
-            Write-Information "INFO: Main application status: $($mainResponse.StatusCode)"
+            Write-Success "Environment: $environmentSetting"
         }
-    }
-    catch {
-        if ($_.Exception.Response.StatusCode -eq 503) {
-            Write-Information "INFO: Main application starting up (503 - normal during startup)"
-        } else {
-            Write-Warning "WARNING: Could not test main application: $($_.Exception.Message)"
-        }
+    } catch {
+        Write-Warning "Could not retrieve environment setting - assuming Production"
+        $environmentSetting = "Production"
     }
     
-    # Test health endpoint
+    # Get Health Check API Key if available
+    $healthCheckApiKey = $null
     try {
-        if ($environmentSetting -eq "Development" -and $healthCheckApiKey) {
-            $headers = @{"X-API-Key" = $healthCheckApiKey}
-            $healthResponse = Invoke-WebRequest -Uri "$appUrl/health" -Method Get -Headers $headers -TimeoutSec 10 -ErrorAction SilentlyContinue
-            if ($healthResponse.StatusCode -eq 200) {
-                Write-Information "SUCCESS: Health endpoint accessible with API key (Development mode)"
-            }
-        } else {
-            $healthResponse = Invoke-WebRequest -Uri "$appUrl/health" -Method Get -TimeoutSec 10 -ErrorAction SilentlyContinue
-            Write-Information "WARNING: Health endpoint accessible without authentication (should be disabled in Production)"
-        }
-    }
-    catch {
-        if ($_.Exception.Response.StatusCode -eq 404) {
-            if ($environmentSetting -eq "Production") {
-                Write-Information "SUCCESS: Health endpoint properly disabled (Production mode)"
-            } else {
-                Write-Warning "WARNING: Health endpoint disabled (unexpected in Development mode)"
-            }
-        }
-        elseif ($_.Exception.Response.StatusCode -eq 401 -or $_.Exception.Response.StatusCode -eq 403) {
-            if ($environmentSetting -eq "Development") {
-                Write-Information "SUCCESS: Health endpoint secured with API key (Development mode)"
-            } else {
-                Write-Information "INFO: Health endpoint secured (Production mode)"
-            }
-        }
-        elseif ($_.Exception.Response.StatusCode -eq 503) {
-            Write-Information "INFO: Health endpoint starting up (503 - normal during startup)"
-        }
-        else {
-            Write-Information "INFO: Health endpoint status: $($_.Exception.Response.StatusCode)"
-        }
-    }
-    
-    # Test Swagger endpoint
-    try {
-        if ($environmentSetting -eq "Development" -and $healthCheckApiKey) {
-            $headers = @{"X-API-Key" = $healthCheckApiKey}
-            $swaggerResponse = Invoke-WebRequest -Uri "$appUrl/swagger" -Method Get -Headers $headers -TimeoutSec 10 -ErrorAction SilentlyContinue
-            if ($swaggerResponse.StatusCode -eq 200) {
-                Write-Information "SUCCESS: Swagger accessible with API key (Development mode)"
-            }
-        } else {
-            $swaggerResponse = Invoke-WebRequest -Uri "$appUrl/swagger" -Method Get -TimeoutSec 10 -ErrorAction SilentlyContinue
-            Write-Information "WARNING: Swagger accessible without authentication (should be disabled in Production)"
-        }
-    }
-    catch {
-        if ($_.Exception.Response.StatusCode -eq 404) {
-            if ($environmentSetting -eq "Production") {
-                Write-Information "SUCCESS: Swagger properly disabled (Production mode)"
-            } else {
-                Write-Warning "WARNING: Swagger disabled (unexpected in Development mode)"
-            }
-        }
-        elseif ($_.Exception.Response.StatusCode -eq 401 -or $_.Exception.Response.StatusCode -eq 403) {
-            if ($environmentSetting -eq "Development") {
-                Write-Information "SUCCESS: Swagger secured with API key (Development mode)"
-            } else {
-                Write-Information "INFO: Swagger secured (Production mode)"
-            }
-        }
-        elseif ($_.Exception.Response.StatusCode -eq 503) {
-            Write-Information "INFO: Swagger starting up (503 - normal during startup)"
-        }
-        else {
-            Write-Information "INFO: Swagger status: $($_.Exception.Response.StatusCode)"
-        }
-    }
-    
-    # Test webhook endpoint
-    try {
-        $webhookResponse = Invoke-WebRequest -Uri "$appUrl/api/incomingCall" -Method Post -Body '{}' -ContentType "application/json" -TimeoutSec 10
-        if ($webhookResponse.StatusCode -eq 400) {
-            Write-Information "SUCCESS: Webhook endpoint accessible (400 expected for empty payload)"
-        }
-    }
-    catch {
-        if ($_.Exception.Response.StatusCode -eq 400) {
-            Write-Information "SUCCESS: Webhook endpoint accessible (400 expected for empty payload)"
-        }
-        elseif ($_.Exception.Response.StatusCode -eq 503) {
-            Write-Information "INFO: Webhook endpoint starting up (503 - normal during startup)"
-        }
-        else {
-            Write-Warning "WARNING: Could not test webhook endpoint: $($_.Exception.Message)"
-        }
-    }
-    
-    # Display environment summary
-    Write-Information ""
-    Write-Information "SUMMARY: Environment Configuration"
-    Write-Information ("=" * 60)
-    Write-Information "Environment: $environmentSetting"
-    Write-Information "Application: $appUrl"
-    Write-Information "Resource Group: $resourceGroup"
-    Write-Information "Key Vault: $keyVaultName"
-    
-    if ($environmentSetting -eq "Development") {
-        Write-Information ""
-        Write-Information "DEVELOPMENT MODE FEATURES:"
-        Write-Information "  - Swagger documentation available (with API key)"
-        Write-Information "  - Health monitoring enabled (with API key)"
-        Write-Information "  - Debug logging enabled"
-        Write-Information "  - Enhanced error details"
+        $healthCheckApiKey = az keyvault secret show --vault-name $KeyVaultName --name "HealthCheckApiKey" --query "value" --output tsv 2>$null
         if ($healthCheckApiKey) {
-            Write-Information ""
-            Write-Information "API Key for testing: $healthCheckApiKey"
-            Write-Information "  Health: curl -H 'X-API-Key: $healthCheckApiKey' $appUrl/health"
-            Write-Information "  Swagger: $appUrl/swagger (add X-API-Key header)"
+            Write-Success "Health Check API Key: Available in Key Vault"
+        } else {
+            Write-Warning "Health Check API Key: Not found in Key Vault"
+        }
+    } catch {
+        Write-Warning "Health Check API Key: Could not access Key Vault secret"
+    }
+    
+    return @{
+        Environment = $environmentSetting
+        HasHealthCheckApiKey = ($null -ne $healthCheckApiKey)
+    }
+}
+
+function Test-ApplicationEndpoints {
+    param(
+        [string]$AppUrl,
+        [string]$Environment,
+        [bool]$HasHealthCheckApiKey
+    )
+    
+    Write-Header "TESTING APPLICATION ENDPOINTS"
+    
+    # Test main endpoint
+    try {
+        $response = Invoke-WebRequest -Uri $AppUrl -Method GET -TimeoutSec 30 -UseBasicParsing
+        if ($response.StatusCode -eq 200) {
+            Write-Success "Main endpoint ($AppUrl): Accessible"
+        } else {
+            Write-Warning "Main endpoint returned status code: $($response.StatusCode)"
+        }
+    } catch {
+        Write-Warning "Main endpoint: $($_.Exception.Message)"
+    }
+    
+    # Test ACS webhook endpoint
+    try {
+        $webhookUrl = "$AppUrl/api/incomingCall"
+        $response = Invoke-WebRequest -Uri $webhookUrl -Method GET -TimeoutSec 10 -UseBasicParsing
+        # Expect 405 Method Not Allowed for GET on POST endpoint
+        if ($response.StatusCode -eq 405) {
+            Write-Success "ACS webhook endpoint: Available (expects POST requests)"
+        } else {
+            Write-Warning "ACS webhook returned unexpected status: $($response.StatusCode)"
+        }
+    } catch {
+        if ($_.Exception.Response.StatusCode -eq 405) {
+            Write-Success "ACS webhook endpoint: Available (expects POST requests)"
+        } elseif ($_.Exception.Response.StatusCode -eq 503) {
+            Write-Warning "ACS webhook endpoint: Service starting up (503)"
+        } else {
+            Write-Warning "ACS webhook endpoint: $($_.Exception.Message)"
+        }
+    }
+    
+    # Test development endpoints if in development mode
+    if ($Environment -eq "Development" -and $HasHealthCheckApiKey) {
+        try {
+            $healthUrl = "$AppUrl/health"
+            $response = Invoke-WebRequest -Uri $healthUrl -Method GET -TimeoutSec 10 -UseBasicParsing
+            # Expect 401 Unauthorized without API key
+            if ($response.StatusCode -eq 401) {
+                Write-Success "Health endpoint: Protected (requires API key)"
+            } else {
+                Write-Warning "Health endpoint returned unexpected status: $($response.StatusCode)"
+            }
+        } catch {
+            if ($_.Exception.Response.StatusCode -eq 401) {
+                Write-Success "Health endpoint: Protected (requires API key)"
+            } else {
+                Write-Warning "Health endpoint: $($_.Exception.Message)"
+            }
+        }
+        
+        try {
+            $swaggerUrl = "$AppUrl/swagger"
+            $response = Invoke-WebRequest -Uri $swaggerUrl -Method GET -TimeoutSec 10 -UseBasicParsing
+            # Expect 401 Unauthorized without API key
+            if ($response.StatusCode -eq 401) {
+                Write-Success "Swagger documentation: Protected (requires API key)"
+            } else {
+                Write-Warning "Swagger endpoint returned unexpected status: $($response.StatusCode)"
+            }
+        } catch {
+            if ($_.Exception.Response.StatusCode -eq 401) {
+                Write-Success "Swagger documentation: Protected (requires API key)"
+            } else {
+                Write-Warning "Swagger endpoint: $($_.Exception.Message)"
+            }
+        }
+    }
+}
+
+function Show-EnvironmentSummary {
+    param(
+        [string]$Environment,
+        [string]$AppUrl,
+        [string]$ResourceGroup,
+        [string]$KeyVaultName,
+        [bool]$HasHealthCheckApiKey
+    )
+    
+    Write-Header "ENVIRONMENT SUMMARY"
+    
+    Write-Information "Environment: $Environment"
+    Write-Information "Application: $AppUrl"
+    Write-Information "Resource Group: $ResourceGroup"
+    Write-Information "Key Vault: $KeyVaultName"
+    Write-Information ""
+    
+    if ($Environment -eq "Development") {
+        Write-Information "DEVELOPMENT MODE FEATURES:"
+        Write-Information "   ✅ Swagger documentation available (API key protected)"
+        Write-Information "   ✅ Health monitoring enabled (API key protected)"
+        Write-Information "   ✅ Debug logging enabled"
+        Write-Information "   ✅ Enhanced error details"
+        Write-Information ""
+        
+        if ($HasHealthCheckApiKey) {
+            Write-Information "API KEY ACCESS:"
+            Write-Information "   API Key: Available in Key Vault (run setup-configuration.ps1 for access commands)"
+            Write-Information "   Health: curl -H 'X-API-Key: [your-api-key]' $AppUrl/health"
+            Write-Information "   Swagger: $AppUrl/swagger (add X-API-Key header)"
+        } else {
+            Write-Warning "   Health Check API Key not available"
         }
     } else {
-        Write-Information ""
         Write-Information "PRODUCTION MODE FEATURES:"
-        Write-Information "  - Monitoring endpoints disabled for security"
-        Write-Information "  - Swagger documentation disabled"
-        Write-Information "  - Optimized performance settings"
-        Write-Information "  - Enhanced security configuration"
+        Write-Information "   Monitoring endpoints disabled for security"
+        Write-Information "   Swagger documentation disabled"
+        Write-Information "   Optimized performance settings"
+        Write-Information "   Enhanced security configuration"
     }
     
     Write-Information ""
     Write-Information "AVAILABLE ENDPOINTS:"
-    Write-Information "  GET  / - Welcome message"
-    Write-Information "  POST /api/incomingCall - ACS incoming call webhook"
-    Write-Information "  POST /api/calls/{contextId} - ACS call events webhook"
+    Write-Information "   GET  /                        - Welcome message (public)"
+    Write-Information "   POST /api/incomingCall        - ACS incoming call webhook (public)"
+    Write-Information "   POST /api/calls/{contextId}   - ACS call events webhook (public)"
     
-    if ($environmentSetting -eq "Development") {
-        Write-Information "  GET  /health - Health check (requires X-API-Key header)"
-        Write-Information "  GET  /swagger - API documentation (requires X-API-Key header)"
+    if ($Environment -eq "Development") {
+        Write-Information "   GET  /health                  - Health check (API key required)"
+        Write-Information "   GET  /health/calls            - Call monitoring (API key required)"
+        Write-Information "   GET  /health/config           - Configuration status (API key required)"
+        Write-Information "   GET  /health/metrics          - System metrics (API key required)"
+        Write-Information "   GET  /swagger                 - API documentation (API key required)"
+    }
+}
+
+function Show-NextSteps {
+    param([string]$Environment)
+    
+    Write-Header "NEXT STEPS"
+    
+    Write-Information "Available actions:"
+    Write-Information ""
+    
+    if ($Environment -eq "Development") {
+        Write-Information "Switch to Production:"
+        Write-Information "   .\scripts\switch-to-production.ps1"
+        Write-Information ""
+    } else {
+        Write-Information "Switch to Development:"
+        Write-Information "   .\scripts\switch-to-development.ps1"
+        Write-Information ""
     }
     
+    Write-Information "Deploy Application:"
+    Write-Information "   .\scripts\deploy-application.ps1"
     Write-Information ""
-    Write-Information "INFO: Use switch-to-development.ps1 or switch-to-production.ps1 to change environment"
-    
+    Write-Information "Reconfigure Setup:"
+    Write-Information "   .\scripts\setup-configuration.ps1 -Force"
+    Write-Information ""
+    Write-Information "Validate Configuration:"
+    Write-Information "   .\scripts\setup-configuration.ps1 -ValidateOnly"
+    Write-Information ""
+    Write-Information "Get Help:"
+    Write-Information "   Get-Help .\scripts\show-environment.ps1 -Full"
 }
-catch {
-    Write-Error "ERROR: Failed to retrieve environment status: $($_.Exception.Message)"
+
+# Main execution
+try {
+    Write-Header "ACS FOR MCS - ENVIRONMENT STATUS"
+    
+    # Check all prerequisites
+    Test-Prerequisites
+    
+    # Get Key Vault configuration
+    $keyVaultName = Get-KeyVaultConfiguration
+    Write-Success "Key Vault configured: $keyVaultName"
+    
+    # Get application information
+    $appInfo = Get-ApplicationInfo -KeyVaultName $keyVaultName
+    
+    # Get environment configuration
+    $envConfig = Get-EnvironmentConfiguration -AppName $appInfo.AppName -ResourceGroup $appInfo.ResourceGroup -KeyVaultName $keyVaultName
+    
+    # Test application endpoints
+    Test-ApplicationEndpoints -AppUrl $appInfo.AppUrl -Environment $envConfig.Environment -HasHealthCheckApiKey $envConfig.HasHealthCheckApiKey
+    
+    # Show environment summary
+    Show-EnvironmentSummary -Environment $envConfig.Environment -AppUrl $appInfo.AppUrl -ResourceGroup $appInfo.ResourceGroup -KeyVaultName $keyVaultName -HasHealthCheckApiKey $envConfig.HasHealthCheckApiKey
+    
+    # Show next steps
+    Show-NextSteps -Environment $envConfig.Environment
+    
+    Write-Information ""
+    Write-Success "Environment status check completed successfully!"
+    
+} catch {
+    Write-Information ""
+    Write-ErrorMessage "Environment status check failed: $($_.Exception.Message)"
+    Write-Information ""
+    Write-Information "Troubleshooting tips:"
+    Write-Information "  - Ensure you're running from the project root directory"
+    Write-Information "  - Verify Azure CLI authentication: az account show"
+    Write-Information "  - Run configuration setup: .\scripts\setup-configuration.ps1"
+    Write-Information "  - Check Key Vault permissions: Reader + Key Vault Secrets User roles"
+    Write-Information ""
     exit 1
 }
