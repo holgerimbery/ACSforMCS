@@ -24,8 +24,6 @@ https://github.com/user-attachments/assets/c3f3c304-f743-4eb3-9f28-dd22338489c1
 ## Documentation of the Project
 [Project Wiki](https://github.com/holgerimbery/ACSforMCS/wiki)
 
-## Swagger while running in Production
-![](assets/screen01.jpg)
 
 ## Credits and Acknowledgments
 This project is based on and inspired by architectural samples and technical guidance provided by Microsoft. We extend our gratitude to the Microsoft engineering teams for their comprehensive documentation and sample code that served as the foundation for this integration. The approach showcased here leverages best practices recommended by Microsoft for connecting Azure Communication Services with conversational AI platforms like Copilot Studio. Special thanks to the Azure Communication Services and Microsoft Copilot Studio product teams for their excellent technical resources that made this implementation possible.
