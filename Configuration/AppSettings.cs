@@ -51,7 +51,7 @@ namespace ACSforMCS.Configuration
 
     /// <summary>
     /// Configuration options for voice synthesis and speech recognition.
-    /// Used to customize the voice characteristics for text-to-speech operations.
+    /// Used to customize the voice characteristics for text-to-speech operations and optimize speech recognition timing.
     /// </summary>
     public class VoiceOptions
     {
@@ -69,5 +69,40 @@ namespace ACSforMCS.Configuration
         /// Default: "en-US" (English United States)
         /// </summary>
         public string Language { get; set; } = "en-US";
+
+        /// <summary>
+        /// Initial silence timeout in milliseconds before speech recognition begins.
+        /// Lower values make the system more responsive but may cut off slow speakers.
+        /// Default: 1000ms (1 second) - optimized for faster interactions
+        /// </summary>
+        public int InitialSilenceTimeoutMs { get; set; } = 1000;
+
+        /// <summary>
+        /// End silence timeout in milliseconds to detect when user has finished speaking.
+        /// Lower values make conversations faster but may cut off speakers with pauses.
+        /// Default: 2000ms (2 seconds) - balanced for natural conversation flow
+        /// </summary>
+        public int EndSilenceTimeoutMs { get; set; } = 2000;
+
+        /// <summary>
+        /// Maximum speech recognition duration in milliseconds.
+        /// Prevents extremely long recognition sessions that could impact performance.
+        /// Default: 30000ms (30 seconds)
+        /// </summary>
+        public int MaxRecognitionDurationMs { get; set; } = 30000;
+
+        /// <summary>
+        /// Enable fast mode speech recognition for quicker response times.
+        /// When enabled, uses optimized speech recognition settings for rapid interactions.
+        /// Default: true for better user experience
+        /// </summary>
+        public bool EnableFastMode { get; set; } = true;
+
+        /// <summary>
+        /// Voice speech rate for text-to-speech synthesis.
+        /// Values: slow, medium, fast, x-fast, or percentage (e.g., "110%")
+        /// Default: "medium" for natural conversation pace
+        /// </summary>
+        public string SpeechRate { get; set; } = "medium";
     }
 }

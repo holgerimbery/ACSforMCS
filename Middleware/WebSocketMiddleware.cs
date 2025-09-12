@@ -128,13 +128,35 @@ namespace ACSforMCS.Middleware
 
                                         if (data != null)
                                         {
-                                            // Handle intermediate transcription results by canceling current prompts
-                                            // This prevents overlapping audio when the user starts speaking
+                                            // Handle intermediate transcription results for faster response
                                             if (data.Contains("Intermediate"))
                                             {
-                                                _logger.LogDebug("Intermediate transcription received, canceling prompt");
+                                                _logger.LogDebug("Intermediate transcription received, checking for early processing");
+                                                
+                                                // Cancel current prompts to allow immediate response
                                                 if (callMedia != null)
                                                     await callMedia.CancelAllMediaOperationsAsync();
+
+                                                // Parse intermediate results for fast mode processing
+                                                var streamingData = StreamingData.Parse(data);
+                                                if (streamingData is TranscriptionData transcriptionData && 
+                                                    !string.IsNullOrEmpty(transcriptionData.Text) &&
+                                                    transcriptionData.Text.Length > 10) // Only process substantial intermediate text
+                                                {
+                                                    // Get conversation ID for fast processing
+                                                    if (conversationId == null && correlationId.Count > 0 && 
+                                                        _callStore.TryGetValue(correlationId.ToString(), out var ctx))
+                                                    {
+                                                        conversationId = ctx.ConversationId;
+                                                    }
+
+                                                    // Send intermediate result for very responsive conversations
+                                                    if (!string.IsNullOrEmpty(conversationId))
+                                                    {
+                                                        await _callAutomationService.SendMessageAsync(conversationId, transcriptionData.Text);
+                                                        _logger.LogInformation("Fast mode: Intermediate message sent: {TranscriptionText}", transcriptionData.Text);
+                                                    }
+                                                }
                                             }
                                             else
                                             {
