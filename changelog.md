@@ -1,5 +1,11 @@
+## 2025-09-21 - v0.50
+- Azure Web App as the main deployment for development and production
+  with scripts to switch between the modes
+- Development: various monitoring endpoints and swagger interface (secured via API key)
+- Production: minimal logging and all unnecessary endpoints closed
+  
 ## 2025-09-11 - v0.40
-- full working as azure webapp
+- full working as an Azure web app
 - wiki
 - monitoring endpoints
 - swagger interface
@@ -7,10 +13,10 @@
 
 ## 2025-09-09 - v0.30
 - added error handling
-- deployment guide for azure web app
+- deployment guide for Azure web app
 
 ## 2025-08-xx - v0.21
-- added in line comments to code and a overview documentation file
+- added in-line comments to the code and an overview documentation file
 
 ## 2025-08-xx - v0.2
 - better error handling
