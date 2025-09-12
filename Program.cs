@@ -303,35 +303,61 @@ builder.Services.AddMemoryCache();
 
 #region Health Checks
 
-// Add health check monitoring for external dependencies
-// This enables monitoring of system health and readiness for handling calls
-builder.Services.AddHealthChecks()
-    .AddCheck<DirectLineHealthCheck>("directline_api", tags: new[] { "ready" });
+// Add health check monitoring only in Development for debugging
+// Production uses external monitoring tools (Application Insights, Azure Monitor) for better performance
+if (builder.Environment.IsDevelopment())
+{
+    builder.Services.AddHealthChecks()
+        .AddCheck<DirectLineHealthCheck>("directline_api", tags: new[] { "ready" });
+}
 
 #endregion
 
 #region Logging Configuration
 
-// Configure logging to reduce noise from HTTP client and hosting diagnostics
-// This focuses logging on application-specific events while reducing system noise
-builder.Logging.AddFilter("System.Net.Http.HttpClient", LogLevel.Warning);
-builder.Logging.AddFilter("Microsoft.AspNetCore.Hosting.Diagnostics", LogLevel.Warning);
-builder.Logging.AddFilter("System.Net.Http.HttpClient.DirectLine.LogicalHandler", LogLevel.Warning);
-
-// Reduce WebSocket message processing noise (set to Information for normal operation)
-builder.Logging.AddFilter("ACSforMCS.Services.CallAutomationService", LogLevel.Information);
-builder.Logging.AddFilter("ACSforMCS.Middleware.WebSocketMiddleware", LogLevel.Information);
+// Configure logging based on environment for optimal performance
+if (builder.Environment.IsDevelopment())
+{
+    // Development: Detailed logging for debugging
+    builder.Logging.AddFilter("System.Net.Http.HttpClient", LogLevel.Information);
+    builder.Logging.AddFilter("Microsoft.AspNetCore.Hosting.Diagnostics", LogLevel.Information);
+    builder.Logging.AddFilter("System.Net.Http.HttpClient.DirectLine.LogicalHandler", LogLevel.Information);
+    // Reduce WebSocket message processing noise
+    builder.Logging.AddFilter("ACSforMCS.Services.CallAutomationService", LogLevel.Information);
+    builder.Logging.AddFilter("ACSforMCS.Middleware.WebSocketMiddleware", LogLevel.Information);
+}
+else
+{
+    // Production: Minimal logging for maximum performance
+    // Only log warnings and errors to reduce I/O overhead and improve performance
+    builder.Logging.AddFilter("System.Net.Http.HttpClient", LogLevel.Error);
+    builder.Logging.AddFilter("Microsoft.AspNetCore.Hosting.Diagnostics", LogLevel.Error);
+    builder.Logging.AddFilter("System.Net.Http.HttpClient.DirectLine.LogicalHandler", LogLevel.Error);
+    builder.Logging.AddFilter("ACSforMCS.Services.CallAutomationService", LogLevel.Warning);
+    builder.Logging.AddFilter("ACSforMCS.Middleware.WebSocketMiddleware", LogLevel.Warning);
+    
+    // Set global minimum log level for production performance
+    builder.Logging.SetMinimumLevel(LogLevel.Warning);
+}
 
 #endregion
 
 var app = builder.Build();
 
-// Load Health Check API Key from Key Vault for both Development and Production security
-// This ensures consistent security across all environments
-healthCheckApiKey = await GetSecretFromKeyVaultAsync(builder.Configuration, "HealthCheckApiKey");
-if (string.IsNullOrEmpty(healthCheckApiKey))
+// Load Health Check API Key only for Development environment
+// Production has monitoring disabled for maximum performance
+if (app.Environment.IsDevelopment())
 {
-    Console.WriteLine($"Warning: HealthCheckApiKey not found in Key Vault for {builder.Environment.EnvironmentName} environment - health endpoints will be disabled");
+    healthCheckApiKey = await GetSecretFromKeyVaultAsync(builder.Configuration, "HealthCheckApiKey");
+    if (string.IsNullOrEmpty(healthCheckApiKey))
+    {
+        Console.WriteLine($"Warning: HealthCheckApiKey not found in Key Vault for Development environment - health endpoints will be disabled");
+    }
+}
+else
+{
+    // Production: No health check API key needed since monitoring is disabled
+    Console.WriteLine("Production mode: Health monitoring disabled for optimal performance");
 }
 
 #region Service Resolution
@@ -424,7 +450,10 @@ app.MapPost("/api/incomingCall", async (
             var callbackUri = callAutomationService.GetCallbackUri();
             logger.LogInformation("Generated callback URI: {CallbackUri}", callbackUri);
             
-            // Configure call answering with AI capabilities
+            // Load voice options for optimized speech recognition
+            var voiceOptions = app.Services.GetRequiredService<IOptions<VoiceOptions>>().Value;
+            
+            // Configure call answering with AI capabilities and optimized speech recognition
             var answerCallOptions = new AnswerCallOptions(incomingCallContext, callbackUri)
             {
                 // Enable AI-powered call intelligence features
@@ -432,12 +461,12 @@ app.MapPost("/api/incomingCall", async (
                 {
                     CognitiveServicesEndpoint = new Uri(appSettings.CognitiveServiceEndpoint)
                 },
-                // Configure real-time speech-to-text transcription
-                TranscriptionOptions = new TranscriptionOptions("en-US")
+                // Configure real-time speech-to-text transcription with optimization
+                TranscriptionOptions = new TranscriptionOptions(voiceOptions.Language)
                 {
                     TransportUri = callAutomationService.GetTranscriptionTransportUri(),
                     TranscriptionTransport = StreamingTransport.Websocket, // Use WebSocket for real-time streaming
-                    EnableIntermediateResults = true, // Get partial results for better responsiveness
+                    EnableIntermediateResults = voiceOptions.EnableFastMode, // Enable for faster response in fast mode
                     StartTranscription = true // Begin transcription immediately when call connects
                 }
             };
@@ -959,304 +988,12 @@ if (app.Environment.IsDevelopment())
 }
 else
 {
-    // Production: Secured endpoint with API key authentication
-    app.MapGet("/health/calls", async (HttpContext context, IServiceProvider serviceProvider) =>
-    {
-        // Check for API key authentication
-        if (string.IsNullOrEmpty(healthCheckApiKey) ||
-            !context.Request.Headers.ContainsKey("X-API-Key") ||
-            context.Request.Headers["X-API-Key"] != healthCheckApiKey)
-        {
-            context.Response.StatusCode = 401;
-            await context.Response.WriteAsync("Unauthorized");
-            return;
-        }
-
-        var callAutomationService = serviceProvider.GetRequiredService<CallAutomationService>();
-        var logger = serviceProvider.GetRequiredService<ILogger<Program>>();
-        
-        try
-        {
-            var activeCalls = callAutomationService.GetActiveCallCount();
-            var callDetails = callAutomationService.GetCallStatistics();
-            
-            logger.LogInformation("Authenticated health check requested - Active calls: {ActiveCalls}", activeCalls);
-            
-            await context.Response.WriteAsJsonAsync(new
-            {
-                timestamp = DateTime.UtcNow,
-                activeCalls = activeCalls,
-                statistics = new
-                {
-                    totalActiveCalls = ((dynamic)callDetails).totalActiveCalls,
-                    activeTokenSources = ((dynamic)callDetails).activeTokenSources
-                    // Exclude detailed call information for security
-                },
-                status = activeCalls < 50 ? "healthy" : "warning",
-                maxRecommendedCalls = 45,
-                environment = "Production"
-            });
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Error retrieving call statistics for health check");
-            context.Response.StatusCode = 500;
-            await context.Response.WriteAsync("Error retrieving call statistics");
-        }
-    })
-    .WithName("GetProductionCallMonitoring")
-    .WithTags("Health Checks", "Monitoring")
-    .WithSummary("Concurrent Call Monitoring (Production)")
-    .WithDescription("Returns sanitized information about active calls and concurrent call statistics. Requires X-API-Key header for authentication.")
-    .Produces(StatusCodes.Status200OK)
-    .Produces(StatusCodes.Status401Unauthorized)
-    .Produces(StatusCodes.Status500InternalServerError);
-
-    // Production: Secured system metrics endpoint
-    app.MapGet("/health/metrics", async (HttpContext context, IServiceProvider serviceProvider) =>
-    {
-        // Check for API key authentication
-        if (string.IsNullOrEmpty(healthCheckApiKey) ||
-            !context.Request.Headers.ContainsKey("X-API-Key") ||
-            context.Request.Headers["X-API-Key"] != healthCheckApiKey)
-        {
-            context.Response.StatusCode = 401;
-            await context.Response.WriteAsync("Unauthorized");
-            return;
-        }
-
-        var logger = serviceProvider.GetRequiredService<ILogger<Program>>();
-        var callAutomationService = serviceProvider.GetRequiredService<CallAutomationService>();
-        
-        try
-        {
-            var process = System.Diagnostics.Process.GetCurrentProcess();
-            var gc = GC.GetTotalMemory(false);
-            var activeCalls = callAutomationService.GetActiveCallCount();
-            
-            logger.LogInformation("System metrics requested via authenticated endpoint");
-            
-            await context.Response.WriteAsJsonAsync(new
-            {
-                timestamp = DateTime.UtcNow,
-                environment = "Production",
-                systemMetrics = new
-                {
-                    processId = process.Id,
-                    workingSet = process.WorkingSet64,
-                    gcMemory = gc,
-                    threadCount = process.Threads.Count,
-                    startTime = process.StartTime,
-                    uptime = DateTime.UtcNow - process.StartTime
-                },
-                applicationMetrics = new
-                {
-                    activeCalls = activeCalls,
-                    maxConcurrentCalls = 45,
-                    callCapacityUsed = Math.Round((double)activeCalls / 45 * 100, 2)
-                },
-                status = new
-                {
-                    overall = activeCalls < 40 ? "healthy" : activeCalls < 50 ? "warning" : "critical",
-                    memoryPressure = gc > 100_000_000 ? "high" : "normal",
-                    threadUtilization = process.Threads.Count > 50 ? "high" : "normal"
-                }
-            });
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Error retrieving system metrics");
-            context.Response.StatusCode = 500;
-            await context.Response.WriteAsync("Error retrieving system metrics");
-        }
-    })
-    .WithName("GetSystemMetrics")
-    .WithTags("Health Checks", "Monitoring")
-    .WithSummary("System Performance Metrics")
-    .WithDescription("Returns detailed system performance metrics including memory usage, CPU metrics, and application statistics. Requires X-API-Key header for authentication.")
-    .Produces(StatusCodes.Status200OK)
-    .Produces(StatusCodes.Status401Unauthorized)
-    .Produces(StatusCodes.Status500InternalServerError);
-
-    // Production: Secured configuration status endpoint
-    app.MapGet("/health/config", async (HttpContext context, IServiceProvider serviceProvider) =>
-    {
-        // Check for API key authentication
-        if (string.IsNullOrEmpty(healthCheckApiKey) ||
-            !context.Request.Headers.ContainsKey("X-API-Key") ||
-            context.Request.Headers["X-API-Key"] != healthCheckApiKey)
-        {
-            context.Response.StatusCode = 401;
-            await context.Response.WriteAsync("Unauthorized");
-            return;
-        }
-
-        var logger = serviceProvider.GetRequiredService<ILogger<Program>>();
-        var configuration = serviceProvider.GetRequiredService<IConfiguration>();
-        var appSettings = serviceProvider.GetRequiredService<IOptions<AppSettings>>().Value;
-        
-        try
-        {
-            logger.LogInformation("Configuration status requested via authenticated endpoint");
-            
-            await context.Response.WriteAsJsonAsync(new
-            {
-                timestamp = DateTime.UtcNow,
-                environment = "Production",
-                configurationStatus = new
-                {
-                    keyVaultEndpoint = !string.IsNullOrEmpty(configuration["KeyVault:Endpoint"]),
-                    acsConnectionString = !string.IsNullOrEmpty(configuration["AcsConnectionString"]),
-                    directLineSecret = !string.IsNullOrEmpty(configuration["DirectLineSecret"]),
-                    baseUri = !string.IsNullOrEmpty(appSettings.BaseUri),
-                    cognitiveServiceEndpoint = !string.IsNullOrEmpty(configuration["CognitiveServiceEndpoint"]),
-                    agentPhoneNumber = !string.IsNullOrEmpty(configuration["AgentPhoneNumber"])
-                },
-                securityStatus = new
-                {
-                    httpsOnly = true,
-                    managedIdentity = true,
-                    apiKeyProtected = !string.IsNullOrEmpty(healthCheckApiKey),
-                    keyVaultRbac = true
-                }
-            });
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Error retrieving configuration status");
-            context.Response.StatusCode = 500;
-            await context.Response.WriteAsync("Error retrieving configuration status");
-        }
-    })
-    .WithName("GetConfigurationStatus")
-    .WithTags("Health Checks", "Configuration")
-    .WithSummary("Configuration Validation")
-    .WithDescription("Returns the status of all required configuration values and security settings. Requires X-API-Key header for authentication.")
-    .Produces(StatusCodes.Status200OK)
-    .Produces(StatusCodes.Status401Unauthorized)
-    .Produces(StatusCodes.Status500InternalServerError);
-
-// DIAGNOSTIC: Bot conversation debugging endpoint (secured in all environments)
-app.MapGet("/health/bot-debug", async (HttpContext context, IServiceProvider serviceProvider) =>
-{
-    // Check for API key authentication
-    if (string.IsNullOrEmpty(healthCheckApiKey) ||
-        !context.Request.Headers.ContainsKey("X-API-Key") ||
-        context.Request.Headers["X-API-Key"] != healthCheckApiKey)
-    {
-        context.Response.StatusCode = 401;
-        await context.Response.WriteAsync("Unauthorized");
-        return;
-    }
-
-        var logger = serviceProvider.GetRequiredService<ILogger<Program>>();
-        var callAutomationService = serviceProvider.GetRequiredService<CallAutomationService>();
-        var configuration = serviceProvider.GetRequiredService<IConfiguration>();
-        var appSettings = serviceProvider.GetRequiredService<IOptions<AppSettings>>().Value;
-        
-        try
-        {
-            logger.LogInformation("Bot conversation debug status requested");
-            
-            // Test DirectLine conversation creation
-            string? testConversationId = null;
-            string? testStreamUrl = null;
-            Exception? testError = null;
-            
-            try
-            {
-                var testConversation = await callAutomationService.StartConversationAsync();
-                testConversationId = testConversation?.ConversationId;
-                testStreamUrl = testConversation?.StreamUrl;
-            }
-            catch (Exception ex)
-            {
-                testError = ex;
-            }
-
-            await context.Response.WriteAsJsonAsync(new
-            {
-                timestamp = DateTime.UtcNow,
-                environment = "Production",
-                directLineTest = new
-                {
-                    testConversationCreated = !string.IsNullOrEmpty(testConversationId),
-                    conversationId = testConversationId,
-                    streamUrlReceived = !string.IsNullOrEmpty(testStreamUrl),
-                    streamUrl = testStreamUrl,
-                    testError = testError?.Message
-                },
-                configuration = new
-                {
-                    directLineSecret = !string.IsNullOrEmpty(configuration["DirectLineSecret"]),
-                    baseUri = appSettings.BaseUri,
-                    keyVaultEndpoint = configuration["KeyVault:Endpoint"]
-                },
-                activeCalls = new
-                {
-                    totalCalls = callStore.Count,
-                    activeTokenSources = callAutomationService.GetActiveTokenSourceCount(),
-                    callDetails = callStore.Select(kvp => new {
-                        correlationId = kvp.Key,
-                        conversationId = kvp.Value.ConversationId,
-                        hasConversation = !string.IsNullOrEmpty(kvp.Value.ConversationId)
-                    }).ToArray()
-                }
-            });
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Error in bot debug endpoint");
-            context.Response.StatusCode = 500;
-            await context.Response.WriteAsync($"Error: {ex.Message}");
-        }
-    })
-    .WithName("GetBotDebugStatus")
-    .WithTags("Monitoring", "Debug");
-
-// DIAGNOSTIC: Real-time conversation monitoring (secured in all environments)
-app.MapGet("/health/conversations", async (HttpContext context, IServiceProvider serviceProvider) =>
-{
-    // Check for API key authentication
-    if (string.IsNullOrEmpty(healthCheckApiKey) ||
-        !context.Request.Headers.ContainsKey("X-API-Key") ||
-        context.Request.Headers["X-API-Key"] != healthCheckApiKey)
-    {
-        context.Response.StatusCode = 401;
-        await context.Response.WriteAsync("Unauthorized");
-        return;
-    }
-
-        var logger = serviceProvider.GetRequiredService<ILogger<Program>>();
-        
-        try
-        {
-            await context.Response.WriteAsJsonAsync(new
-            {
-                timestamp = DateTime.UtcNow,
-                activeCalls = callStore.Count,
-                conversations = callStore.Select(kvp => new {
-                    correlationId = kvp.Key,
-                    conversationId = kvp.Value.ConversationId ?? "NOT_CREATED",
-                    conversationStarted = !string.IsNullOrEmpty(kvp.Value.ConversationId)
-                }).ToArray(),
-                summary = new
-                {
-                    totalCalls = callStore.Count,
-                    callsWithConversations = callStore.Count(kvp => !string.IsNullOrEmpty(kvp.Value.ConversationId)),
-                    callsWithoutConversations = callStore.Count(kvp => string.IsNullOrEmpty(kvp.Value.ConversationId))
-                }
-            });
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Error in conversations endpoint");
-            context.Response.StatusCode = 500;
-            await context.Response.WriteAsync($"Error: {ex.Message}");
-        }
-    })
-    .WithName("GetConversationsStatus")
-    .WithTags("Monitoring", "Debug");
+    // Production: Minimal configuration for maximum performance
+    // All health and monitoring endpoints are disabled to reduce overhead and attack surface
+    // Only essential business endpoints are available
+    
+    // Note: For production monitoring, use Application Insights, Azure Monitor, or external monitoring tools
+    // This eliminates the overhead of in-app health checks while providing better monitoring capabilities
 }
 
 // Add secured health check endpoints for both environments
@@ -1332,76 +1069,9 @@ if (app.Environment.IsDevelopment())
         }
     });
 }
-else
-{
-    // Production: Secured detailed health endpoint with API key authentication
-    app.MapHealthChecks("/health/detailed", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions()
-    {
-        ResponseWriter = async (context, report) =>
-        {
-            // Check for API key authentication
-            if (string.IsNullOrEmpty(healthCheckApiKey) ||
-                !context.Request.Headers.ContainsKey("X-API-Key") ||
-                context.Request.Headers["X-API-Key"] != healthCheckApiKey)
-            {
-                context.Response.StatusCode = 401;
-                await context.Response.WriteAsync("Unauthorized - API Key Required");
-                return;
-            }
 
-            context.Response.ContentType = "application/json";
-            var result = System.Text.Json.JsonSerializer.Serialize(new
-            {
-                status = report.Status.ToString(),
-                timestamp = DateTime.UtcNow,
-                environment = "Production",
-                checks = report.Entries.Select(entry => new
-                {
-                    name = entry.Key,
-                    status = entry.Value.Status.ToString(),
-                    exception = entry.Value.Exception?.Message,
-                    data = entry.Value.Data,
-                    description = entry.Value.Description,
-                    duration = entry.Value.Duration
-                })
-            });
-            await context.Response.WriteAsync(result);
-        }
-    });
-
-    // Production: Provide a secure basic health endpoint that requires authentication
-    app.MapHealthChecks("/health", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions()
-    {
-        ResponseWriter = async (context, report) =>
-        {
-            // Check for basic authentication or API key
-            if (string.IsNullOrEmpty(healthCheckApiKey) ||
-                !context.Request.Headers.ContainsKey("X-API-Key") ||
-                context.Request.Headers["X-API-Key"] != healthCheckApiKey)
-            {
-                context.Response.StatusCode = 401;
-                await context.Response.WriteAsync("Unauthorized");
-                return;
-            }
-
-            context.Response.ContentType = "application/json";
-            var result = System.Text.Json.JsonSerializer.Serialize(new
-            {
-                status = report.Status.ToString(),
-                timestamp = DateTime.UtcNow,
-                // Sanitized output - no sensitive details in production
-                checks = report.Entries.Select(entry => new
-                {
-                    name = entry.Key,
-                    status = entry.Value.Status.ToString(),
-                    // No exception details or internal data in production
-                    duration = entry.Value.Duration
-                })
-            });
-            await context.Response.WriteAsync(result);
-        }
-    }); // Authentication is handled manually in the ResponseWriter above
-}
+// Production: No health check endpoints - monitoring disabled for maximum performance
+// Use Application Insights, Azure Monitor, or external tools for production monitoring
 
 #endregion
 

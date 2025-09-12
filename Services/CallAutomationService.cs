@@ -564,24 +564,15 @@ namespace ACSforMCS.Services
         {
             try
             {
-                // Generate cache key based on message, voice name, and language for SSML caching
-                var cacheKey = $"ssml_{_voiceOptions.VoiceName}_{_voiceOptions.Language}_{message.GetHashCode()}";
+                _logger.LogDebug("Playing message: {Message}", message);
                 
-                // Try to get cached SSML, or create and cache it if not found
-                var ssml = _memoryCache.GetOrCreate(cacheKey, entry =>
+                // Use plain text instead of SSML to avoid parsing issues
+                var textSource = new TextSource(message)
                 {
-                    // Set cache expiration to 1 hour for performance while allowing updates
-                    entry.AbsoluteExpirationRelativeToNow = TimeSpan.FromHours(1);
-                    entry.SlidingExpiration = TimeSpan.FromMinutes(30);
-                    
-                    // Create SSML (Speech Synthesis Markup Language) for better voice control
-                    return $@"<speak version=""1.0"" xmlns=""http://www.w3.org/2001/10/synthesis"" xml:lang=""{_voiceOptions.Language}"">
-                <voice name=""{_voiceOptions.VoiceName}"">{message}</voice>
-            </speak>";
-                });
-            
-                var ssmlPlaySource = new SsmlSource(ssml);
-                var playOptions = new PlayToAllOptions(ssmlPlaySource)
+                    VoiceName = _voiceOptions.VoiceName
+                };
+                
+                var playOptions = new PlayToAllOptions(textSource)
                 {
                     OperationContext = Constants.DefaultOperationContext
                 };
@@ -675,7 +666,10 @@ namespace ACSforMCS.Services
                 
                 // Announce the transfer to the caller
                 await PlayToAllAsync(callMedia, transferMessage, cancellationToken);
-                await Task.Delay(3000, cancellationToken); // Give time for the message to play
+                
+                // Optimized delay based on fast mode setting
+                var delayMs = _voiceOptions.EnableFastMode ? 1500 : 3000; // Faster in fast mode
+                await Task.Delay(delayMs, cancellationToken); // Give time for the message to play
                 
                 // Execute the actual transfer
                 var transferSuccess = await TransferCallToPhoneNumberAsync(callConnection, targetPhoneNumber, cancellationToken);
@@ -692,7 +686,9 @@ namespace ACSforMCS.Services
                         "Your call is being transferred. If you are disconnected, an agent will call you back within a few minutes.", 
                         cancellationToken);
                     
-                    await Task.Delay(2000, cancellationToken);
+                    // Optimized delay for faster mode
+                    var finalDelayMs = _voiceOptions.EnableFastMode ? 1000 : 2000;
+                    await Task.Delay(finalDelayMs, cancellationToken);
                     return true;
                 }
                 else
