@@ -11,6 +11,8 @@ The application creates a voice-based customer service experience by:
 4. Transforming the agent's responses into spoken audio using SSML (Speech Synthesis Markup Language)
 5. Delivering the synthesized speech back to the caller
 6. Transfer the call to an external phone number
+7. monitoring endpoints (secured)
+8. swagger interface (secured when running in Development Mode, disable in Production Mode)
 
 This solution provides an alternative communication channel for Copilot Studio agents.
 enabling organizations to extend their conversational AI capabilities to traditional phone systems

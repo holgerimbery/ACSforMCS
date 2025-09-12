@@ -56,16 +56,23 @@ builder.Services.Configure<VoiceOptions>(builder.Configuration.GetSection("Voice
 // Add standard ASP.NET Core services
 builder.Services.AddControllers(); // Enable MVC controllers for API endpoints
 builder.Services.AddEndpointsApiExplorer(); // Enable API exploration for minimal APIs
-builder.Services.AddSwaggerGen(c =>
+
+// Add Swagger generation only in Development environment for security
+if (builder.Environment.IsDevelopment())
 {
-    c.SwaggerDoc("v1", new Microsoft.OpenApi.Models.OpenApiInfo
+    builder.Services.AddSwaggerGen(c =>
     {
-        Title = "ACS for MCS API",
-        Version = "v1.0",
-        Description = @"
-# Azure Communication Services for Microsoft Copilot Studio
+        c.SwaggerDoc("v1", new Microsoft.OpenApi.Models.OpenApiInfo
+        {
+            Title = "ACS for MCS API",
+            Version = "v1.0",
+            Description = @"
+# Azure Communication Services for Microsoft Copilot Studio (Development)
 
 A comprehensive telephony automation solution that integrates Azure Communication Services with Microsoft Copilot Studio.
+
+## ⚠️ DEVELOPMENT ENVIRONMENT
+This API documentation is only available in Development environment. Production deployments have Swagger disabled for security.
 
 ## Features
 - **Incoming Call Handling**: Automatically answers phone calls and connects them to your Copilot Studio agent
@@ -75,98 +82,99 @@ A comprehensive telephony automation solution that integrates Azure Communicatio
 - **Scalable Architecture**: Built for enterprise-grade telephony automation
 
 ## Security
-- Production endpoints require `X-API-Key` header authentication
-- Azure Key Vault integration for secure configuration management
-- Managed Identity for secure Azure resource access
+- **Development & Production**: All monitoring endpoints require `X-API-Key` header authentication
+- **Azure Key Vault**: Secure configuration management with environment-specific secrets
+- **Managed Identity**: Secure Azure resource access
+- **API Documentation**: Requires authentication even in Development environment
+
+## Authentication Required
+All secured endpoints require the `X-API-Key` header with the value from Azure Key Vault secret `HealthCheckApiKey`.
 
 ## Architecture
 ```
 Phone Call → Azure Communication Services → Event Grid → ACS for MCS → DirectLine → Copilot Studio
 ```
 ",
-        Contact = new Microsoft.OpenApi.Models.OpenApiContact
-        {
-            Name = "ACS for MCS Project",
-            Url = new Uri("https://github.com/holgerimbery/ACSforMCS"),
-            Email = "holger@imbery.de"
-        },
-        License = new Microsoft.OpenApi.Models.OpenApiLicense
-        {
-            Name = "MIT License",
-            Url = new Uri("https://github.com/holgerimbery/ACSforMCS/blob/main/LICENSE.md")
-        }
-    });
+            Contact = new Microsoft.OpenApi.Models.OpenApiContact
+            {
+                Name = "ACS for MCS Project",
+                Url = new Uri("https://github.com/holgerimbery/ACSforMCS"),
+                Email = "holger@imbery.de"
+            },
+            License = new Microsoft.OpenApi.Models.OpenApiLicense
+            {
+                Name = "MIT License",
+                Url = new Uri("https://github.com/holgerimbery/ACSforMCS/blob/main/LICENSE.md")
+            }
+        });
 
-    // Configure API Key authentication for Swagger
-    c.AddSecurityDefinition("ApiKey", new Microsoft.OpenApi.Models.OpenApiSecurityScheme
-    {
-        Type = Microsoft.OpenApi.Models.SecuritySchemeType.ApiKey,
-        In = Microsoft.OpenApi.Models.ParameterLocation.Header,
-        Name = "X-API-Key",
-        Description = @"
-**API Key Authentication for Production Endpoints**
+        // Configure API Key authentication for Swagger
+        c.AddSecurityDefinition("ApiKey", new Microsoft.OpenApi.Models.OpenApiSecurityScheme
+        {
+            Type = Microsoft.OpenApi.Models.SecuritySchemeType.ApiKey,
+            In = Microsoft.OpenApi.Models.ParameterLocation.Header,
+            Name = "X-API-Key",
+            Description = @"
+**API Key Authentication Required**
 
-In production, monitoring and health check endpoints require authentication via the `X-API-Key` header.
+All monitoring and health check endpoints require authentication via the `X-API-Key` header in both Development and Production environments.
 
 **Usage:**
 ```
 X-API-Key: your-health-check-api-key
 ```
 
-**Note:** The API key is stored in Azure Key Vault as `HealthCheckApiKey` secret.
-Development endpoints do not require authentication for easier debugging.
+**Note:** The API key is stored in Azure Key Vault as `HealthCheckApiKey` secret and is required for accessing this documentation.
 ",
-        Scheme = "ApiKeyScheme"
-    });
+            Scheme = "ApiKeyScheme"
+        });
 
-    // Tag definitions for better organization
-    c.TagActionsBy(api => api.ActionDescriptor.RouteValues.ContainsKey("action") 
-        ? new[] { api.ActionDescriptor.RouteValues["action"] ?? "Default" }
-        : new[] { api.GroupName ?? "Default" });
-    
-    // Custom schema IDs to avoid conflicts
-    c.CustomSchemaIds(type => type.FullName?.Replace("+", "."));
+        // Tag definitions for better organization
+        c.TagActionsBy(api => api.ActionDescriptor.RouteValues.ContainsKey("action") 
+            ? new[] { api.ActionDescriptor.RouteValues["action"] ?? "Default" }
+            : new[] { api.GroupName ?? "Default" });
+        
+        // Custom schema IDs to avoid conflicts
+        c.CustomSchemaIds(type => type.FullName?.Replace("+", "."));
 
-    // Add server information
-    c.AddServer(new Microsoft.OpenApi.Models.OpenApiServer
-    {
-        Url = "https://acsformcs.azurewebsites.net",
-        Description = "Production Server"
-    });
-    
-    if (builder.Environment.IsDevelopment())
-    {
+        // Add server information for Development
+        c.AddServer(new Microsoft.OpenApi.Models.OpenApiServer
+        {
+            Url = "https://acsformcs.azurewebsites.net",
+            Description = "Azure Web App (Development Mode)"
+        });
+        
         c.AddServer(new Microsoft.OpenApi.Models.OpenApiServer
         {
             Url = "https://localhost:5252",
-            Description = "Development Server (Local)"
+            Description = "Local Development Server"
         });
-    }
 
-    // Include XML comments if available
-    var xmlFile = $"{System.Reflection.Assembly.GetExecutingAssembly().GetName().Name}.xml";
-    var xmlPath = Path.Combine(AppContext.BaseDirectory, xmlFile);
-    if (File.Exists(xmlPath))
-    {
-        c.IncludeXmlComments(xmlPath);
-    }
-
-    // Add global security requirement for secured endpoints
-    c.AddSecurityRequirement(new Microsoft.OpenApi.Models.OpenApiSecurityRequirement
-    {
+        // Include XML comments if available
+        var xmlFile = $"{System.Reflection.Assembly.GetExecutingAssembly().GetName().Name}.xml";
+        var xmlPath = Path.Combine(AppContext.BaseDirectory, xmlFile);
+        if (File.Exists(xmlPath))
         {
-            new Microsoft.OpenApi.Models.OpenApiSecurityScheme
-            {
-                Reference = new Microsoft.OpenApi.Models.OpenApiReference
-                {
-                    Type = Microsoft.OpenApi.Models.ReferenceType.SecurityScheme,
-                    Id = "ApiKey"
-                }
-            },
-            Array.Empty<string>()
+            c.IncludeXmlComments(xmlPath);
         }
-    });
-}); // Add Swagger/OpenAPI documentation generation with enhanced configuration
+
+        // Add global security requirement for secured endpoints
+        c.AddSecurityRequirement(new Microsoft.OpenApi.Models.OpenApiSecurityRequirement
+        {
+            {
+                new Microsoft.OpenApi.Models.OpenApiSecurityScheme
+                {
+                    Reference = new Microsoft.OpenApi.Models.OpenApiReference
+                    {
+                        Type = Microsoft.OpenApi.Models.ReferenceType.SecurityScheme,
+                        Id = "ApiKey"
+                    }
+                },
+                Array.Empty<string>()
+            }
+        });
+    }); // Add Swagger/OpenAPI documentation generation for Development only
+}
 
 // Load and validate application settings
 var appSettings = new AppSettings();
@@ -318,14 +326,12 @@ builder.Logging.AddFilter("ACSforMCS.Middleware.WebSocketMiddleware", LogLevel.I
 
 var app = builder.Build();
 
-// Load Health Check API Key from Key Vault for production security
-if (builder.Environment.IsProduction())
+// Load Health Check API Key from Key Vault for both Development and Production security
+// This ensures consistent security across all environments
+healthCheckApiKey = await GetSecretFromKeyVaultAsync(builder.Configuration, "HealthCheckApiKey");
+if (string.IsNullOrEmpty(healthCheckApiKey))
 {
-    healthCheckApiKey = await GetSecretFromKeyVaultAsync(builder.Configuration, "HealthCheckApiKey");
-    if (string.IsNullOrEmpty(healthCheckApiKey))
-    {
-        Console.WriteLine("Warning: HealthCheckApiKey not found in Key Vault - health endpoints will be disabled");
-    }
+    Console.WriteLine($"Warning: HealthCheckApiKey not found in Key Vault for {builder.Environment.EnvironmentName} environment - health endpoints will be disabled");
 }
 
 #region Service Resolution
@@ -677,15 +683,62 @@ app.UseCallWebSockets(); // Use our custom middleware for call-specific WebSocke
 #region Pipeline Configuration
 
 // Configure the HTTP request pipeline based on environment
-if (app.Environment.IsDevelopment() || app.Environment.IsProduction())
+if (app.Environment.IsDevelopment())
 {
-    // Enable Swagger UI for API documentation and testing
+    // Enable Swagger UI for API documentation and testing in Development only
     app.UseSwagger();
+    
+    // Add security middleware for Swagger endpoints
+    app.UseWhen(context => context.Request.Path.StartsWithSegments("/swagger"), appBuilder =>
+    {
+        appBuilder.Use(async (context, next) =>
+        {
+            // Check for API key authentication for all Swagger access
+            if (string.IsNullOrEmpty(healthCheckApiKey) ||
+                !context.Request.Headers.ContainsKey("X-API-Key") ||
+                context.Request.Headers["X-API-Key"] != healthCheckApiKey)
+            {
+                context.Response.StatusCode = 401;
+                context.Response.ContentType = "text/html";
+                await context.Response.WriteAsync(@"
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Unauthorized - Swagger Access</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; background-color: #f5f5f5; }
+        .container { background-color: white; padding: 40px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); max-width: 600px; margin: 0 auto; }
+        .error { color: #d13438; font-size: 18px; margin-bottom: 20px; }
+        .code { background-color: #f8f9fa; padding: 10px; border-radius: 4px; font-family: monospace; }
+        .note { color: #666; font-size: 14px; margin-top: 20px; }
+    </style>
+</head>
+<body>
+    <div class='container'>
+        <h1>🔒 Swagger API Documentation - Authentication Required</h1>
+        <div class='error'>❌ Unauthorized Access</div>
+        <p>Access to API documentation requires authentication with the <strong>X-API-Key</strong> header.</p>
+        <p><strong>Example:</strong></p>
+        <div class='code'>curl -H ""X-API-Key: your-api-key"" https://acsformcs.azurewebsites.net/swagger</div>
+        <div class='note'>
+            <strong>Note:</strong> This is the Development environment. The API key is stored in Azure Key Vault as 'HealthCheckApiKey'.
+            <br>Production deployments have Swagger documentation completely disabled for security.
+        </div>
+    </div>
+</body>
+</html>");
+                return;
+            }
+            
+            await next();
+        });
+    });
+    
     app.UseSwaggerUI(c =>
     {
         c.SwaggerEndpoint("/swagger/v1/swagger.json", "ACS for MCS API v1.0");
         c.RoutePrefix = "swagger"; // Serve the Swagger UI at /swagger
-        c.DocumentTitle = "ACS for MCS API Documentation";
+        c.DocumentTitle = "ACS for MCS API Documentation (Development)";
         c.DisplayRequestDuration();
         c.EnableTryItOutByDefault();
         c.EnableFilter();
@@ -707,19 +760,18 @@ if (app.Environment.IsDevelopment() || app.Environment.IsProduction())
         c.DefaultModelExpandDepth(1);
         c.DocExpansion(Swashbuckle.AspNetCore.SwaggerUI.DocExpansion.List);
         
-        // Custom header for API documentation
+        // Custom header for API documentation with security notice
         c.HeadContent = @"
         <style>
             .swagger-ui .topbar { background-color: #0078d4; }
             .swagger-ui .topbar .topbar-wrapper .link { color: white; }
             .swagger-ui .info .title { color: #0078d4; }
-        </style>
-        <script>
-            // Custom JavaScript can be added here for enhanced functionality
-            console.log('ACS for MCS API Documentation Loaded');
-        </script>";
+            .swagger-ui .info .description { color: #d13438; font-weight: bold; }
+            .security-notice { color: #d13438; font-weight: bold; background: #fff3cd; padding: 10px; border: 1px solid #ffeaa7; border-radius: 4px; margin: 10px 0; }
+        </style>";
     });
 }
+// Production: Swagger UI is completely disabled for security
 
 // Enable authorization middleware (though not heavily used in this application)
 app.UseAuthorization();
@@ -730,15 +782,22 @@ app.MapControllers();
 // Health check endpoints are configured below based on environment
 // This avoids duplicate registrations that cause AmbiguousMatchException
 
-// Add concurrent call monitoring endpoint
+// Add concurrent call monitoring endpoint - now secured in both environments
 if (app.Environment.IsDevelopment())
 {
-    // Development: Basic health check endpoint (unrestricted access)
-    app.MapHealthChecks("/health");
-    
-    // Development: Unrestricted access for debugging
-    app.MapGet("/health/calls", (IServiceProvider serviceProvider) =>
+    // Development: Secured health endpoints with API key authentication (consistent with Production)
+    app.MapGet("/health/calls", async (HttpContext context, IServiceProvider serviceProvider) =>
     {
+        // Check for API key authentication (same as Production)
+        if (string.IsNullOrEmpty(healthCheckApiKey) ||
+            !context.Request.Headers.ContainsKey("X-API-Key") ||
+            context.Request.Headers["X-API-Key"] != healthCheckApiKey)
+        {
+            context.Response.StatusCode = 401;
+            await context.Response.WriteAsync("Unauthorized");
+            return;
+        }
+
         var callAutomationService = serviceProvider.GetRequiredService<CallAutomationService>();
         var logger = serviceProvider.GetRequiredService<ILogger<Program>>();
         
@@ -747,13 +806,13 @@ if (app.Environment.IsDevelopment())
             var activeCalls = callAutomationService.GetActiveCallCount();
             var callDetails = callAutomationService.GetCallStatistics();
             
-            logger.LogInformation("Health check requested - Active calls: {ActiveCalls}", activeCalls);
+            logger.LogInformation("Authenticated health check requested - Active calls: {ActiveCalls}", activeCalls);
             
-            return Results.Ok(new
+            await context.Response.WriteAsJsonAsync(new
             {
                 timestamp = DateTime.UtcNow,
                 activeCalls = activeCalls,
-                statistics = callDetails,
+                statistics = callDetails, // Full details available in Development for debugging
                 status = activeCalls < 50 ? "healthy" : "warning",
                 maxRecommendedCalls = 45,
                 environment = "Development"
@@ -762,14 +821,140 @@ if (app.Environment.IsDevelopment())
         catch (Exception ex)
         {
             logger.LogError(ex, "Error retrieving call statistics for health check");
-            return Results.Problem("Error retrieving call statistics");
+            context.Response.StatusCode = 500;
+            await context.Response.WriteAsync("Error retrieving call statistics");
         }
     })
-    .WithName("GetCallMonitoring")
+    .WithName("GetDevelopmentCallMonitoring")
     .WithTags("Health Checks", "Monitoring")
-    .WithSummary("Concurrent Call Monitoring")
-    .WithDescription("Returns detailed information about active calls and concurrent call statistics for development debugging")
+    .WithSummary("Concurrent Call Monitoring (Development)")
+    .WithDescription("Returns detailed information about active calls and concurrent call statistics. Requires X-API-Key header for authentication.")
     .Produces(StatusCodes.Status200OK)
+    .Produces(StatusCodes.Status401Unauthorized)
+    .Produces(StatusCodes.Status500InternalServerError);
+
+    // Development: Secured system metrics endpoint
+    app.MapGet("/health/metrics", async (HttpContext context, IServiceProvider serviceProvider) =>
+    {
+        // Check for API key authentication
+        if (string.IsNullOrEmpty(healthCheckApiKey) ||
+            !context.Request.Headers.ContainsKey("X-API-Key") ||
+            context.Request.Headers["X-API-Key"] != healthCheckApiKey)
+        {
+            context.Response.StatusCode = 401;
+            await context.Response.WriteAsync("Unauthorized");
+            return;
+        }
+
+        var logger = serviceProvider.GetRequiredService<ILogger<Program>>();
+        var callAutomationService = serviceProvider.GetRequiredService<CallAutomationService>();
+        
+        try
+        {
+            var process = System.Diagnostics.Process.GetCurrentProcess();
+            var gc = GC.GetTotalMemory(false);
+            var activeCalls = callAutomationService.GetActiveCallCount();
+            
+            logger.LogInformation("System metrics requested via authenticated endpoint");
+            
+            await context.Response.WriteAsJsonAsync(new
+            {
+                timestamp = DateTime.UtcNow,
+                environment = "Development",
+                systemMetrics = new
+                {
+                    processId = process.Id,
+                    workingSet = process.WorkingSet64,
+                    gcMemory = gc,
+                    threadCount = process.Threads.Count,
+                    startTime = process.StartTime,
+                    uptime = DateTime.UtcNow - process.StartTime
+                },
+                applicationMetrics = new
+                {
+                    activeCalls = activeCalls,
+                    maxConcurrentCalls = 45,
+                    callCapacityUsed = Math.Round((double)activeCalls / 45 * 100, 2)
+                },
+                status = new
+                {
+                    overall = activeCalls < 40 ? "healthy" : activeCalls < 50 ? "warning" : "critical",
+                    memoryPressure = gc > 100_000_000 ? "high" : "normal",
+                    threadUtilization = process.Threads.Count > 50 ? "high" : "normal"
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error retrieving system metrics");
+            context.Response.StatusCode = 500;
+            await context.Response.WriteAsync("Error retrieving system metrics");
+        }
+    })
+    .WithName("GetDevelopmentSystemMetrics")
+    .WithTags("Health Checks", "Monitoring")
+    .WithSummary("System Performance Metrics (Development)")
+    .WithDescription("Returns detailed system performance metrics including memory usage, CPU metrics, and application statistics. Requires X-API-Key header for authentication.")
+    .Produces(StatusCodes.Status200OK)
+    .Produces(StatusCodes.Status401Unauthorized)
+    .Produces(StatusCodes.Status500InternalServerError);
+
+    // Development: Secured configuration status endpoint
+    app.MapGet("/health/config", async (HttpContext context, IServiceProvider serviceProvider) =>
+    {
+        // Check for API key authentication
+        if (string.IsNullOrEmpty(healthCheckApiKey) ||
+            !context.Request.Headers.ContainsKey("X-API-Key") ||
+            context.Request.Headers["X-API-Key"] != healthCheckApiKey)
+        {
+            context.Response.StatusCode = 401;
+            await context.Response.WriteAsync("Unauthorized");
+            return;
+        }
+
+        var logger = serviceProvider.GetRequiredService<ILogger<Program>>();
+        var configuration = serviceProvider.GetRequiredService<IConfiguration>();
+        var appSettings = serviceProvider.GetRequiredService<IOptions<AppSettings>>().Value;
+        
+        try
+        {
+            logger.LogInformation("Configuration status requested via authenticated endpoint");
+            
+            await context.Response.WriteAsJsonAsync(new
+            {
+                timestamp = DateTime.UtcNow,
+                environment = "Development",
+                configurationStatus = new
+                {
+                    keyVaultEndpoint = !string.IsNullOrEmpty(configuration["KeyVault:Endpoint"]),
+                    acsConnectionString = !string.IsNullOrEmpty(configuration["AcsConnectionString"]),
+                    directLineSecret = !string.IsNullOrEmpty(configuration["DirectLineSecret"]),
+                    baseUri = !string.IsNullOrEmpty(appSettings.BaseUri),
+                    cognitiveServiceEndpoint = !string.IsNullOrEmpty(configuration["CognitiveServiceEndpoint"]),
+                    agentPhoneNumber = !string.IsNullOrEmpty(configuration["AgentPhoneNumber"])
+                },
+                securityStatus = new
+                {
+                    httpsOnly = true,
+                    managedIdentity = true,
+                    apiKeyProtected = !string.IsNullOrEmpty(healthCheckApiKey),
+                    keyVaultRbac = true
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error retrieving configuration status");
+            context.Response.StatusCode = 500;
+            await context.Response.WriteAsync("Error retrieving configuration status");
+        }
+    })
+    .WithName("GetDevelopmentConfigurationStatus")
+    .WithTags("Health Checks", "Configuration")
+    .WithSummary("Configuration Validation (Development)")
+    .WithDescription("Returns the status of all required configuration values and security settings. Requires X-API-Key header for authentication.")
+    .Produces(StatusCodes.Status200OK)
+    .Produces(StatusCodes.Status401Unauthorized)
     .Produces(StatusCodes.Status500InternalServerError);
 }
 else
@@ -951,18 +1136,18 @@ else
     .Produces(StatusCodes.Status401Unauthorized)
     .Produces(StatusCodes.Status500InternalServerError);
 
-    // DIAGNOSTIC: Bot conversation debugging endpoint
-    app.MapGet("/health/bot-debug", async (HttpContext context, IServiceProvider serviceProvider) =>
+// DIAGNOSTIC: Bot conversation debugging endpoint (secured in all environments)
+app.MapGet("/health/bot-debug", async (HttpContext context, IServiceProvider serviceProvider) =>
+{
+    // Check for API key authentication
+    if (string.IsNullOrEmpty(healthCheckApiKey) ||
+        !context.Request.Headers.ContainsKey("X-API-Key") ||
+        context.Request.Headers["X-API-Key"] != healthCheckApiKey)
     {
-        // Check for API key authentication
-        if (string.IsNullOrEmpty(healthCheckApiKey) ||
-            !context.Request.Headers.ContainsKey("X-API-Key") ||
-            context.Request.Headers["X-API-Key"] != healthCheckApiKey)
-        {
-            context.Response.StatusCode = 401;
-            await context.Response.WriteAsync("Unauthorized");
-            return;
-        }
+        context.Response.StatusCode = 401;
+        await context.Response.WriteAsync("Unauthorized");
+        return;
+    }
 
         var logger = serviceProvider.GetRequiredService<ILogger<Program>>();
         var callAutomationService = serviceProvider.GetRequiredService<CallAutomationService>();
@@ -1029,18 +1214,18 @@ else
     .WithName("GetBotDebugStatus")
     .WithTags("Monitoring", "Debug");
 
-    // DIAGNOSTIC: Real-time conversation monitoring
-    app.MapGet("/health/conversations", async (HttpContext context, IServiceProvider serviceProvider) =>
+// DIAGNOSTIC: Real-time conversation monitoring (secured in all environments)
+app.MapGet("/health/conversations", async (HttpContext context, IServiceProvider serviceProvider) =>
+{
+    // Check for API key authentication
+    if (string.IsNullOrEmpty(healthCheckApiKey) ||
+        !context.Request.Headers.ContainsKey("X-API-Key") ||
+        context.Request.Headers["X-API-Key"] != healthCheckApiKey)
     {
-        // Check for API key authentication
-        if (string.IsNullOrEmpty(healthCheckApiKey) ||
-            !context.Request.Headers.ContainsKey("X-API-Key") ||
-            context.Request.Headers["X-API-Key"] != healthCheckApiKey)
-        {
-            context.Response.StatusCode = 401;
-            await context.Response.WriteAsync("Unauthorized");
-            return;
-        }
+        context.Response.StatusCode = 401;
+        await context.Response.WriteAsync("Unauthorized");
+        return;
+    }
 
         var logger = serviceProvider.GetRequiredService<ILogger<Program>>();
         
@@ -1074,17 +1259,65 @@ else
     .WithTags("Monitoring", "Debug");
 }
 
-// Add detailed health check endpoint for debugging (DEVELOPMENT ONLY for security)
+// Add secured health check endpoints for both environments
 if (app.Environment.IsDevelopment())
 {
-    app.MapHealthChecks("/health/detailed", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions()
+    // Development: Secured basic health endpoint
+    app.MapHealthChecks("/health", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions()
     {
         ResponseWriter = async (context, report) =>
         {
+            // Check for API key authentication
+            if (string.IsNullOrEmpty(healthCheckApiKey) ||
+                !context.Request.Headers.ContainsKey("X-API-Key") ||
+                context.Request.Headers["X-API-Key"] != healthCheckApiKey)
+            {
+                context.Response.StatusCode = 401;
+                await context.Response.WriteAsync("Unauthorized");
+                return;
+            }
+
             context.Response.ContentType = "application/json";
             var result = System.Text.Json.JsonSerializer.Serialize(new
             {
                 status = report.Status.ToString(),
+                timestamp = DateTime.UtcNow,
+                environment = "Development",
+                checks = report.Entries.Select(entry => new
+                {
+                    name = entry.Key,
+                    status = entry.Value.Status.ToString(),
+                    exception = entry.Value.Exception?.Message,
+                    data = entry.Value.Data,
+                    description = entry.Value.Description,
+                    duration = entry.Value.Duration
+                })
+            });
+            await context.Response.WriteAsync(result);
+        }
+    });
+
+    // Development: Secured detailed health endpoint
+    app.MapHealthChecks("/health/detailed", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions()
+    {
+        ResponseWriter = async (context, report) =>
+        {
+            // Check for API key authentication
+            if (string.IsNullOrEmpty(healthCheckApiKey) ||
+                !context.Request.Headers.ContainsKey("X-API-Key") ||
+                context.Request.Headers["X-API-Key"] != healthCheckApiKey)
+            {
+                context.Response.StatusCode = 401;
+                await context.Response.WriteAsync("Unauthorized - API Key Required");
+                return;
+            }
+
+            context.Response.ContentType = "application/json";
+            var result = System.Text.Json.JsonSerializer.Serialize(new
+            {
+                status = report.Status.ToString(),
+                timestamp = DateTime.UtcNow,
+                environment = "Development",
                 checks = report.Entries.Select(entry => new
                 {
                     name = entry.Key,
