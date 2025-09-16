@@ -83,9 +83,12 @@ jobs:
 
     - name: Copy deployment files
       run: |
+        # Copy the deployment zip to deployment folder
         cp ACSforMCS-${{ steps.version.outputs.VERSION }}.zip release-package/deployment/
+        # Copy PowerShell scripts
         cp scripts/*.ps1 release-package/scripts/
         cp scripts/README-DEPLOYMENT.md release-package/deployment/
+        # Copy root documentation
         cp *.md release-package/ 2>/dev/null || true
 
     - name: Validate deployment scripts
@@ -153,7 +156,7 @@ jobs:
         
         ## What's Included
         
-        - **deployment/** - Pre-built application package and deployment script
+        - **deployment/** - Application zip file and deployment script
         - **scripts/** - Configuration and management scripts
         - **README.md** - This file
         - **CHANGELOG.md** - Version history
