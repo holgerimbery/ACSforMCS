@@ -85,8 +85,9 @@ jobs:
       run: |
         # Copy the deployment zip to deployment folder
         cp deployment-app.zip release-package/deployment/ACSforMCS-${{ steps.version.outputs.VERSION }}.zip
-        # Copy PowerShell scripts
+        # Copy PowerShell scripts to scripts folder
         cp scripts/*.ps1 release-package/scripts/
+        # Copy deployment documentation to deployment folder
         cp scripts/README-DEPLOYMENT.md release-package/deployment/
         # Copy root documentation
         cp *.md release-package/ 2>/dev/null || true
@@ -144,14 +145,12 @@ jobs:
         
         2. **Deploy the application**:
            ```powershell
-           cd deployment
-           .\deploy-release.ps1
+           .\scripts\deploy-release.ps1
            ```
         
         3. **Verify installation**:
            ```powershell
-           cd ..\scripts
-           .\show-environment.ps1
+           .\scripts\show-environment.ps1
            ```
         
         ## What's Included
@@ -260,7 +259,7 @@ jobs:
         ### Deployment
         1. Download the appropriate package
         2. Run \`scripts/setup-configuration.ps1\` to configure
-        3. Run \`deployment/deploy-release.ps1\` to deploy
+        3. Run \`scripts/deploy-release.ps1\` to deploy
         4. Verify with \`scripts/show-environment.ps1\`
         
         ### Requirements
