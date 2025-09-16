@@ -15,24 +15,33 @@
     Skip confirmation prompts
 .PARAMETER SkipBuild
     Skip the build process and deploy existing artifacts
+.PARAMETER ValidateOnly
+    Validate configuration and prerequisites without deploying (dry-run mode)
 .EXAMPLE
     .\deploy-application.ps1
     .\deploy-application.ps1 -Environment Production -Force
     .\deploy-application.ps1 -SkipBuild -Force
+    .\deploy-application.ps1 -ValidateOnly
 #>
 
 param(
     [ValidateSet("Development", "Production", "")]
     [string]$Environment = "",
     [switch]$Force,
-    [switch]$SkipBuild
+    [switch]$SkipBuild,
+    [switch]$ValidateOnly
 )
 
 # Script configuration
 $ErrorActionPreference = "Stop"
 $InformationPreference = "Continue"
 
-Write-Information "ACS for MCS - Build and Deploy"
+if ($ValidateOnly) {
+    Write-Information "ACS for MCS - VALIDATION MODE (No Deployment)"
+    Write-Information "Running in validation-only mode - no changes will be made"
+} else {
+    Write-Information "ACS for MCS - Build and Deploy"
+}
 Write-Information ("=" * 60)
 
 try {
@@ -44,21 +53,52 @@ try {
     }
     Write-Information "SUCCESS: Authenticated as: $($azAccount.user.name)"
     
-    # Find project file
+    # Detect environment type (development vs release package)
     $projectPath = Get-ChildItem -Path (Get-Location) -Filter "*.csproj" | Select-Object -First 1
+    $isReleasePackage = $false
+    
     if (!$projectPath) {
-        throw "No .csproj file found in current directory"
+        # Check if we're in a release package environment
+        $deploymentFolder = Join-Path (Get-Location) "deployment"
+        if (Test-Path $deploymentFolder) {
+            $deploymentZip = Get-ChildItem -Path $deploymentFolder -Filter "*.zip" | Select-Object -First 1
+            if ($deploymentZip) {
+                Write-Information "SUCCESS: Release package environment detected"
+                Write-Information "SUCCESS: Found deployment package: $($deploymentZip.Name)"
+                $isReleasePackage = $true
+            } else {
+                throw "No deployment zip file found in deployment folder"
+            }
+        } else {
+            throw "No .csproj file found and no deployment folder detected. Run this script from project root or release package root."
+        }
+    } else {
+        Write-Information "SUCCESS: Development environment detected"
+        Write-Information "SUCCESS: Project found: $($projectPath.Name)"
     }
-    Write-Information "SUCCESS: Project found: $($projectPath.Name)"
     
-    # Get Key Vault endpoint from user secrets
+    # Get Key Vault endpoint from configuration
     Write-Information "INFO: Retrieving Key Vault configuration..."
-    $keyVaultEndpoint = dotnet user-secrets list --project $projectPath.FullName | Where-Object { $_ -match "KeyVault:Endpoint\s*=\s*(.+)" }
-    if (!$keyVaultEndpoint) {
-        throw "KeyVault:Endpoint not found in user secrets. Please run setup script first."
-    }
+    $keyVaultEndpoint = $null
+    $keyVaultName = $null
     
-    $keyVaultName = ($keyVaultEndpoint -split '=')[1].Trim() -replace 'https://([^.]+)\..*', '$1'
+    if ($isReleasePackage) {
+        # For release packages, try environment variable first
+        $keyVaultEndpoint = [Environment]::GetEnvironmentVariable("KeyVault__Endpoint", "User")
+        if ($keyVaultEndpoint) {
+            Write-Information "SUCCESS: Using Key Vault from environment variable"
+            $keyVaultName = ($keyVaultEndpoint -replace 'https://([^.]+)\..*', '$1')
+        } else {
+            throw "KeyVault__Endpoint environment variable not found. Please run setup-configuration.ps1 first."
+        }
+    } else {
+        # For development, use user secrets
+        $keyVaultEndpoint = dotnet user-secrets list --project $projectPath.FullName | Where-Object { $_ -match "KeyVault:Endpoint\s*=\s*(.+)" }
+        if (!$keyVaultEndpoint) {
+            throw "KeyVault:Endpoint not found in user secrets. Please run setup-configuration.ps1 first."
+        }
+        $keyVaultName = ($keyVaultEndpoint -split '=')[1].Trim() -replace 'https://([^.]+)\..*', '$1'
+    }
     Write-Information "INFO: Key Vault: $keyVaultName"
     
     # Retrieve all secrets from Key Vault
@@ -139,7 +179,23 @@ try {
     
     Write-Information "SUCCESS: All required secrets found in Key Vault"
     
-    # Build application
+    # Handle build/deployment package based on environment type
+    $deploymentZip = $null
+    
+    if ($isReleasePackage) {
+        # For release packages, use existing deployment zip
+        Write-Information ""
+        Write-Information "INFO: Using pre-built deployment package..."
+        $deploymentFolder = Join-Path (Get-Location) "deployment"
+        $deploymentZip = (Get-ChildItem -Path $deploymentFolder -Filter "*.zip" | Select-Object -First 1).FullName
+        Write-Information "SUCCESS: Using deployment package: $deploymentZip"
+        
+        if ($ValidateOnly) {
+            Write-Information "VALIDATION: Would deploy pre-built package (no build required)"
+        }
+        
+    } else {
+        # For development environment, build from source
     if (!$SkipBuild) {
         Write-Information ""
         Write-Information "INFO: Building application in Release mode..."
@@ -154,24 +210,39 @@ try {
         
         # Build application
         Write-Information "INFO: Compiling application..."
-        $buildResult = dotnet build $projectPath.FullName --configuration Release --no-restore --verbosity quiet
-        if ($LASTEXITCODE -ne 0) {
-            throw "Build failed. Exit code: $LASTEXITCODE"
+        if ($ValidateOnly) {
+            Write-Information "VALIDATION: Would build application in Release mode"
+            # Still validate that the project compiles
+            $buildResult = dotnet build $projectPath.FullName --configuration Release --no-restore --verbosity quiet --no-dependencies
+            if ($LASTEXITCODE -ne 0) {
+                throw "Build validation failed. Project does not compile. Exit code: $LASTEXITCODE"
+            }
+            Write-Information "SUCCESS: Build validation passed - application compiles successfully"
+        } else {
+            $buildResult = dotnet build $projectPath.FullName --configuration Release --no-restore --verbosity quiet
+            if ($LASTEXITCODE -ne 0) {
+                throw "Build failed. Exit code: $LASTEXITCODE"
+            }
+            Write-Information "SUCCESS: Application built successfully"
         }
-        Write-Information "SUCCESS: Application built successfully"
         
         # Publish application
-        Write-Information "INFO: Publishing application for deployment..."
-        $publishPath = Join-Path $PSScriptRoot "..\bin\publish"
-        if (Test-Path $publishPath) {
-            Remove-Item $publishPath -Recurse -Force
+        if ($ValidateOnly) {
+            Write-Information "VALIDATION: Would publish application for deployment"
+            Write-Information "VALIDATION: Publish path would be: $publishPath"
+        } else {
+            Write-Information "INFO: Publishing application for deployment..."
+            $publishPath = Join-Path $PSScriptRoot "..\bin\publish"
+            if (Test-Path $publishPath) {
+                Remove-Item $publishPath -Recurse -Force
+            }
+            
+            dotnet publish $projectPath.FullName --configuration Release --output $publishPath --no-build --verbosity quiet
+            if ($LASTEXITCODE -ne 0) {
+                throw "Publish failed. Exit code: $LASTEXITCODE"
+            }
+            Write-Information "SUCCESS: Application published to: $publishPath"
         }
-        
-        dotnet publish $projectPath.FullName --configuration Release --output $publishPath --no-build --verbosity quiet
-        if ($LASTEXITCODE -ne 0) {
-            throw "Publish failed. Exit code: $LASTEXITCODE"
-        }
-        Write-Information "SUCCESS: Application published to: $publishPath"
         
         # Create deployment package
         Write-Information "INFO: Creating deployment package..."
@@ -196,6 +267,7 @@ try {
         $deploymentZip = $deploymentPackages[0].FullName
         Write-Information "INFO: Using existing deployment package: $deploymentZip"
     }
+    } # End of development environment handling
     
     # Deployment confirmation
     if (!$Force) {
@@ -219,18 +291,29 @@ try {
     
     # Deploy to Azure Web App
     Write-Information ""
-    Write-Information "INFO: Deploying to Azure Web App..."
-    Write-Information "INFO: Target: $appName in $resourceGroup"
-    
-    $deploymentStart = Get-Date
-    az webapp deploy --name $appName --resource-group $resourceGroup --src-path $deploymentZip --type zip --async false
-    
-    if ($LASTEXITCODE -ne 0) {
-        throw "Deployment failed. Exit code: $LASTEXITCODE"
+    if ($ValidateOnly) {
+        Write-Information "VALIDATION: Would deploy to Azure Web App..."
+        Write-Information "VALIDATION: Target would be: $appName in $resourceGroup"
+        Write-Information "VALIDATION: Deployment package: $deploymentZip"
+        Write-Information "VALIDATION: Package size: $([math]::Round((Get-Item $deploymentZip).Length / 1MB, 2)) MB"
+        Write-Information ""
+        Write-Information "SUCCESS: Validation completed - deployment would proceed successfully"
+        Write-Information "INFO: To perform actual deployment, run without -ValidateOnly parameter"
+        return
+    } else {
+        Write-Information "INFO: Deploying to Azure Web App..."
+        Write-Information "INFO: Target: $appName in $resourceGroup"
+        
+        $deploymentStart = Get-Date
+        az webapp deploy --name $appName --resource-group $resourceGroup --src-path $deploymentZip --type zip --async false
+        
+        if ($LASTEXITCODE -ne 0) {
+            throw "Deployment failed. Exit code: $LASTEXITCODE"
+        }
+        
+        $deploymentDuration = (Get-Date) - $deploymentStart
+        Write-Information "SUCCESS: Deployment completed in $([math]::Round($deploymentDuration.TotalSeconds, 1)) seconds"
     }
-    
-    $deploymentDuration = (Get-Date) - $deploymentStart
-    Write-Information "SUCCESS: Deployment completed in $([math]::Round($deploymentDuration.TotalSeconds, 1)) seconds"
     
     # Wait for application startup
     Write-Information ""

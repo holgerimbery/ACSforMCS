@@ -85,22 +85,21 @@ jobs:
       run: |
         # Copy the deployment zip to deployment folder
         cp deployment-app.zip release-package/deployment/ACSforMCS-${{ steps.version.outputs.VERSION }}.zip
-        # Copy PowerShell scripts to scripts folder
-        cp scripts/*.ps1 release-package/scripts/
-        # Copy deployment documentation to deployment folder
-        cp scripts/README-DEPLOYMENT.md release-package/deployment/
-        # Copy root documentation
-        cp *.md release-package/ 2>/dev/null || true
+        # Copy only essential PowerShell scripts to scripts folder
+        cp scripts/deploy-application.ps1 release-package/scripts/
+        cp scripts/show-environment.ps1 release-package/scripts/
+        cp scripts/setup-configuration.ps1 release-package/scripts/
+        # Copy LICENSE if it exists
+        cp LICENSE* release-package/ 2>/dev/null || true
 
     - name: Validate deployment scripts
       shell: pwsh
       run: |
         Write-Host "Validating PowerShell scripts..." -ForegroundColor Cyan
         
-        # Test script syntax
+        # Test script syntax for essential scripts only
         $scripts = @(
-          "release-package/scripts/deploy-release.ps1",
-          "release-package/scripts/validate-deployment.ps1",
+          "release-package/scripts/deploy-application.ps1",
           "release-package/scripts/setup-configuration.ps1",
           "release-package/scripts/show-environment.ps1"
         )
@@ -145,7 +144,7 @@ jobs:
         
         2. **Deploy the application**:
            ```powershell
-           .\scripts\deploy-release.ps1
+           .\scripts\deploy-application.ps1
            ```
         
         3. **Verify installation**:
@@ -155,10 +154,14 @@ jobs:
         
         ## What's Included
         
-        - **deployment/** - Application zip file and deployment script
-        - **scripts/** - Configuration and management scripts
+        - **deployment/** - Application zip file ready for Azure deployment
+        - **scripts/** - Essential configuration and deployment scripts
+          - `setup-configuration.ps1` - Configure Azure Key Vault secrets
+          - `deploy-application.ps1` - Deploy application to Azure Web App
+          - `show-environment.ps1` - Display current configuration and status
         - **README.md** - This file
         - **CHANGELOG.md** - Version history
+        - **LICENSE** - Software license
         
         ## Documentation
         
@@ -258,9 +261,9 @@ jobs:
         
         ### Deployment
         1. Download the appropriate package
-        2. Run \`scripts/setup-configuration.ps1\` to configure
-        3. Run \`scripts/deploy-release.ps1\` to deploy
-        4. Verify with \`scripts/show-environment.ps1\`
+        2. Run `scripts/setup-configuration.ps1` to configure
+        3. Run `scripts/deploy-application.ps1` to deploy
+        4. Verify with `scripts/show-environment.ps1`
         
         ### Requirements
         - Azure CLI installed and authenticated

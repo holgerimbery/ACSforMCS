@@ -6,22 +6,27 @@
 
 .DESCRIPTION
     This script provides comprehensive environment status information by:
+    - Auto-detecting environment type (development vs release package)
     - Checking Azure CLI authentication and project configuration
-    - Retrieving and displaying current environment settings
+    - Retrieving and displaying current environment settings from Key Vault
     - Testing endpoint accessibility and health status
     - Showing security configuration and available features
     - Providing detailed environment summary and usage instructions
 
 .EXAMPLE
     .\show-environment.ps1
-    Display complete environment status and configuration.
+    Display complete environment status and configuration for current environment.
 
 .NOTES
     Requirements:
     - Azure CLI must be installed and authenticated
-    - .NET SDK must be installed for user secrets access
+    - .NET SDK required for development environment only
     - PowerShell 7.0 or later
     - Proper Key Vault configuration via setup-configuration.ps1
+    
+    Auto-detects:
+    - Development environment: Looks for .csproj file, uses user secrets
+    - Release package: Looks for deployment folder, uses environment variables
 #>
 
 [CmdletBinding()]
@@ -34,6 +39,7 @@ $InformationPreference = "Continue"
 
 # Script configuration
 $ProjectFile = "ACSforMCS.csproj"
+$script:IsReleasePackage = $false  # Will be set during prerequisites check
 
 function Write-Header {
     param([string]$Title)
@@ -63,11 +69,20 @@ function Test-Prerequisites {
     
     $issues = @()
     
-    # Check if we're in the right directory
-    if (-not (Test-Path $ProjectFile)) {
-        $issues += "Project file '$ProjectFile' not found. Run this script from the project root directory."
+    # Check if we're in development environment (has project file) or release package
+    $isDevelopment = Test-Path $ProjectFile
+    if ($isDevelopment) {
+        Write-Success "Development environment detected: $ProjectFile found"
+        $script:IsReleasePackage = $false
     } else {
-        Write-Success "Project file found: $ProjectFile"
+        # Check for release package structure
+        $deploymentFolder = Join-Path (Get-Location) "deployment"
+        if (Test-Path $deploymentFolder) {
+            Write-Success "Release package environment detected: deployment folder found"
+            $script:IsReleasePackage = $true
+        } else {
+            $issues += "No project file or deployment folder found. Run this script from project root or release package root."
+        }
     }
     
     # Check Azure CLI authentication
@@ -78,17 +93,28 @@ function Test-Prerequisites {
         $issues += "Azure CLI not authenticated. Run 'az login' first."
     }
     
-    # Check user secrets configuration
-    try {
-        $secretsOutput = dotnet user-secrets list --project $ProjectFile 2>$null
-        $hasKeyVaultEndpoint = $secretsOutput | Where-Object { $_ -match "KeyVault:Endpoint" }
-        if ($hasKeyVaultEndpoint) {
-            Write-Success "User secrets configured with Key Vault endpoint"
+    # Check configuration based on environment type
+    if ($script:IsReleasePackage) {
+        # Check environment variables for release packages
+        $keyVaultEndpoint = [Environment]::GetEnvironmentVariable("KeyVault__Endpoint", "User")
+        if ($keyVaultEndpoint) {
+            Write-Success "Key Vault endpoint configured via environment variable"
         } else {
             $issues += "Key Vault endpoint not configured. Run 'setup-configuration.ps1' first."
         }
-    } catch {
-        $issues += "Could not access user secrets. Ensure .NET SDK is installed."
+    } else {
+        # Check user secrets for development
+        try {
+            $secretsOutput = dotnet user-secrets list --project $ProjectFile 2>$null
+            $hasKeyVaultEndpoint = $secretsOutput | Where-Object { $_ -match "KeyVault:Endpoint" }
+            if ($hasKeyVaultEndpoint) {
+                Write-Success "User secrets configured with Key Vault endpoint"
+            } else {
+                $issues += "Key Vault endpoint not configured. Run 'setup-configuration.ps1' first."
+            }
+        } catch {
+            $issues += "Cannot access user secrets. Ensure .NET SDK is installed."
+        }
     }
     
     if ($issues.Count -gt 0) {
@@ -103,20 +129,30 @@ function Test-Prerequisites {
 }
 
 function Get-KeyVaultConfiguration {
-    try {
-        $secretsOutput = dotnet user-secrets list --project $ProjectFile 2>$null
-        $endpointLine = $secretsOutput | Where-Object { $_ -match "KeyVault:Endpoint\s*=\s*(.+)" }
-        if ($endpointLine) {
-            $endpoint = $matches[1].Trim()
-            if ($endpoint -match "https://([^.]+)\.vault\.azure\.net/?") {
-                return $matches[1]
-            }
+    if ($script:IsReleasePackage) {
+        # For release packages, get from environment variable
+        $keyVaultEndpoint = [Environment]::GetEnvironmentVariable("KeyVault__Endpoint", "User")
+        if ($keyVaultEndpoint -and $keyVaultEndpoint -match "https://([^.]+)\.vault\.azure\.net/?") {
+            return $matches[1]
         }
-    } catch {
-        throw "Could not retrieve Key Vault configuration from user secrets"
+        throw "Key Vault endpoint not found in environment variables. Run setup-configuration.ps1 first."
+    } else {
+        # For development, get from user secrets
+        try {
+            $secretsOutput = dotnet user-secrets list --project $ProjectFile 2>$null
+            $endpointLine = $secretsOutput | Where-Object { $_ -match "KeyVault:Endpoint\s*=\s*(.+)" }
+            if ($endpointLine) {
+                $endpoint = $matches[1].Trim()
+                if ($endpoint -match "https://([^.]+)\.vault\.azure\.net/?") {
+                    return $matches[1]
+                }
+            }
+        } catch {
+            throw "Could not retrieve Key Vault configuration from user secrets"
+        }
+        
+        throw "Key Vault endpoint not found in user secrets. Run setup-configuration.ps1 first."
     }
-    
-    throw "Key Vault endpoint not found in user secrets. Run setup-configuration.ps1 first."
 }
 
 function Get-ApplicationInfo {
@@ -290,6 +326,13 @@ function Show-EnvironmentSummary {
     Write-Information "Application: $AppUrl"
     Write-Information "Resource Group: $ResourceGroup"
     Write-Information "Key Vault: $KeyVaultName"
+    
+    # Show configuration source
+    if ($script:IsReleasePackage) {
+        Write-Information "Configuration Source: Environment Variables (Release Package)"
+    } else {
+        Write-Information "Configuration Source: .NET User Secrets (Development)"
+    }
     Write-Information ""
     
     if ($Environment -eq "Development") {
@@ -364,7 +407,11 @@ function Show-NextSteps {
 
 # Main execution
 try {
-    Write-Header "ACS FOR MCS - ENVIRONMENT STATUS"
+    if ($script:IsReleasePackage) {
+        Write-Header "ACS FOR MCS - ENVIRONMENT STATUS (Release Package)"
+    } else {
+        Write-Header "ACS FOR MCS - ENVIRONMENT STATUS (Development)"
+    }
     
     # Check all prerequisites
     Test-Prerequisites
