@@ -73,16 +73,16 @@ namespace ACSforMCS.Configuration
         /// <summary>
         /// Initial silence timeout in milliseconds before speech recognition begins.
         /// Lower values make the system more responsive but may cut off slow speakers.
-        /// Default: 1000ms (1 second) - optimized for faster interactions
+        /// Default: 800ms (0.8 seconds) - optimized for fastest response times
         /// </summary>
-        public int InitialSilenceTimeoutMs { get; set; } = 1000;
+        public int InitialSilenceTimeoutMs { get; set; } = 800;
 
         /// <summary>
         /// End silence timeout in milliseconds to detect when user has finished speaking.
         /// Lower values make conversations faster but may cut off speakers with pauses.
-        /// Default: 2000ms (2 seconds) - balanced for natural conversation flow
+        /// Default: 1500ms (1.5 seconds) - optimized for faster response times
         /// </summary>
-        public int EndSilenceTimeoutMs { get; set; } = 2000;
+        public int EndSilenceTimeoutMs { get; set; } = 1500;
 
         /// <summary>
         /// Maximum speech recognition duration in milliseconds.
@@ -101,8 +101,8 @@ namespace ACSforMCS.Configuration
         /// <summary>
         /// Voice speech rate for text-to-speech synthesis.
         /// Values: slow, medium, fast, x-fast, or percentage (e.g., "110%")
-        /// Default: "medium" for natural conversation pace
+        /// Default: "fast" for quicker response times and better user experience
         /// </summary>
-        public string SpeechRate { get; set; } = "medium";
+        public string SpeechRate { get; set; } = "fast";
     }
 }

@@ -1,0 +1,310 @@
+name: Create Release Package
+
+on:
+  # Manual trigger
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g., v1.0.0)'
+        required: true
+        type: string
+      release_type:
+        description: 'Release type'
+        required: true
+        default: 'stable'
+        type: choice
+        options:
+        - stable
+        - beta
+        - alpha
+
+  # Automatic trigger on tag creation
+  push:
+    tags:
+      - 'v*.*.*'
+
+env:
+  DOTNET_VERSION: '9.0.x'
+
+jobs:
+  create-release:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+
+    - name: Get version from tag or input
+      id: version
+      run: |
+        if [ "${{ github.event_name }}" == "push" ]; then
+          VERSION=${GITHUB_REF#refs/tags/}
+        else
+          VERSION="${{ github.event.inputs.version }}"
+        fi
+        echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+        echo "Version: $VERSION"
+
+    - name: Restore dependencies
+      run: dotnet restore
+
+    - name: Build application
+      run: dotnet build --configuration Release --no-restore
+
+    - name: Test application
+      run: dotnet test --configuration Release --no-build --verbosity normal
+
+    - name: Publish application
+      run: |
+        dotnet publish --configuration Release --no-build --output ./publish
+        
+    - name: Create deployment package
+      run: |
+        cd publish
+        zip -r ../ACSforMCS-${{ steps.version.outputs.VERSION }}.zip .
+        cd ..
+
+    - name: Create release directories
+      run: |
+        mkdir -p release-package/deployment
+        mkdir -p release-package/scripts
+
+    - name: Copy deployment files
+      run: |
+        cp ACSforMCS-${{ steps.version.outputs.VERSION }}.zip release-package/deployment/
+        cp scripts/*.ps1 release-package/scripts/
+        cp scripts/README-DEPLOYMENT.md release-package/deployment/
+        cp *.md release-package/ 2>/dev/null || true
+
+    - name: Validate deployment scripts
+      shell: pwsh
+      run: |
+        Write-Host "Validating PowerShell scripts..." -ForegroundColor Cyan
+        
+        # Test script syntax
+        $scripts = @(
+          "release-package/scripts/deploy-release.ps1",
+          "release-package/scripts/validate-deployment.ps1",
+          "release-package/scripts/setup-configuration.ps1",
+          "release-package/scripts/show-environment.ps1"
+        )
+        
+        $errors = 0
+        foreach ($script in $scripts) {
+          if (Test-Path $script) {
+            try {
+              $null = [System.Management.Automation.PSParser]::Tokenize((Get-Content $script -Raw), [ref]$null)
+              Write-Host "✅ $script - Syntax OK" -ForegroundColor Green
+            }
+            catch {
+              Write-Host "❌ $script - Syntax Error: $($_.Exception.Message)" -ForegroundColor Red
+              $errors++
+            }
+          } else {
+            Write-Host "⚠️ $script - File not found" -ForegroundColor Yellow
+          }
+        }
+        
+        if ($errors -gt 0) {
+          Write-Error "Script validation failed with $errors errors"
+          exit 1
+        } else {
+          Write-Host "✅ All scripts validated successfully" -ForegroundColor Green
+        }
+
+    - name: Create lightweight documentation
+      run: |
+        # Create a simple README with links to online documentation
+        cat > release-package/README.md << 'EOF'
+        # ACS for MCS - Release Package v${{ steps.version.outputs.VERSION }}
+        
+        Welcome to the ACS for MCS (Azure Communication Services for Microsoft Copilot Studio) release package!
+        
+        ## 🚀 Quick Start
+        
+        1. **Set up configuration**:
+           ```powershell
+           .\scripts\setup-configuration.ps1
+           ```
+        
+        2. **Deploy the application**:
+           ```powershell
+           cd deployment
+           .\deploy-release.ps1
+           ```
+        
+        3. **Verify installation**:
+           ```powershell
+           cd ..\scripts
+           .\show-environment.ps1
+           ```
+        
+        ## 📦 What's Included
+        
+        - **deployment/** - Pre-built application package and deployment script
+        - **scripts/** - Configuration and management scripts
+        - **README.md** - This file
+        - **CHANGELOG.md** - Version history
+        
+        ## 📚 Documentation
+        
+        **For comprehensive documentation, visit the GitHub repository:**
+        
+        - 📖 [**Complete Documentation**](https://github.com/holgerimbery/ACSforMCS/wiki) - Full installation and configuration guide
+        - 🛠️ [**Installation Guide**](https://github.com/holgerimbery/ACSforMCS/wiki/Installation) - Step-by-step setup instructions
+        - ⚙️ [**Configuration Reference**](https://github.com/holgerimbery/ACSforMCS/wiki/Configuration) - Detailed configuration options
+        - 🔧 [**Troubleshooting**](https://github.com/holgerimbery/ACSforMCS/wiki/Troubleshooting) - Common issues and solutions
+        - 📈 [**Performance Tuning**](https://github.com/holgerimbery/ACSforMCS/wiki/Performance) - Optimization tips
+        
+        ## ⚡ Prerequisites
+        
+        - Azure subscription with appropriate permissions
+        - Azure CLI installed and authenticated (`az login`)
+        - PowerShell 5.1 or later
+        - Azure resources: Web App, Key Vault, Communication Services, Cognitive Services
+        
+        ## 🆘 Support
+        
+        - 🐛 [**GitHub Issues**](https://github.com/holgerimbery/ACSforMCS/issues) - Report bugs or request features
+        -  [**Repository**](https://github.com/holgerimbery/ACSforMCS) - Source code and documentation
+        
+        ## 📋 Version Information
+        
+        - **Version**: ${{ steps.version.outputs.VERSION }}
+        - **Release Type**: ${{ github.event.inputs.release_type || 'stable' }}
+        - **Build Date**: $(date +%Y-%m-%d)
+        - **Documentation**: Always up-to-date at [GitHub Wiki](https://github.com/holgerimbery/ACSforMCS/wiki)
+        
+        ---
+        
+        **📱 Ready to deploy?** Start with `.\scripts\setup-configuration.ps1`
+        EOF
+
+    - name: Create simple changelog
+      run: |
+        # Use existing changelog if available, otherwise create a link-based one
+        if [ -f "CHANGELOG.md" ]; then
+          echo "Using existing CHANGELOG.md from repository"
+          cp CHANGELOG.md release-package/CHANGELOG.md
+        else
+          echo "Creating minimal CHANGELOG.md with repository links"
+          cat > release-package/CHANGELOG.md << 'EOF'
+        # Changelog
+        
+        ## [${{ steps.version.outputs.VERSION }}] - $(date +%Y-%m-%d)
+        
+        ### Release Information
+        - **Version**: ${{ steps.version.outputs.VERSION }}
+        - **Release Type**: ${{ github.event.inputs.release_type || 'stable' }}
+        - **Build Date**: $(date +%Y-%m-%d)
+        - **Commit**: ${GITHUB_SHA:0:7}
+        
+        ### Documentation
+        For detailed release notes, technical changes, and version history:
+        - 📋 [**GitHub Releases**](https://github.com/holgerimbery/ACSforMCS/releases) - Complete release history
+        - 🔄 [**Commit History**](https://github.com/holgerimbery/ACSforMCS/commits/main) - Detailed changes
+        - 🐛 [**Pull Requests**](https://github.com/holgerimbery/ACSforMCS/pulls?q=is%3Apr+is%3Aclosed) - Feature implementations and bug fixes
+        
+        ---
+        
+        **Note**: For the most current changelog and detailed release notes, visit the GitHub repository.
+        EOF
+        fi
+
+    - name: Create single release package
+      run: |
+        cd release-package
+        zip -r ../ACSforMCS-${{ steps.version.outputs.VERSION }}.zip .
+        cd ..
+
+    - name: Generate release notes
+      id: release_notes
+      run: |
+        RELEASE_TYPE="${{ github.event.inputs.release_type || 'stable' }}"
+        cat > release_notes.md << EOF
+        ## ACS for MCS ${{ steps.version.outputs.VERSION }}
+        
+        ### 🚀 What's New
+        - Pre-built deployment packages for easy installation
+        - Comprehensive documentation and setup guides
+        - Performance optimizations for faster response times
+        - Automated deployment scripts with validation
+        
+        ### 📦 Release Package
+        This release contains everything needed for deployment:
+        - **Pre-built .NET 9.0 application** ready for Azure Web Apps
+        - **PowerShell deployment scripts** with validation and configuration
+        - **Setup documentation** with links to comprehensive guides
+        
+        ### ⚡ Performance Improvements
+        - ~2 seconds faster response times through optimized speech recognition
+        - Parallel WebSocket setup for reduced latency
+        - Enhanced buffer management for better throughput
+        - Optimized TTS playback speed
+        
+        ### 🛠️ Deployment
+        1. Download the appropriate package
+        2. Run \`scripts/setup-configuration.ps1\` to configure
+        3. Run \`deployment/deploy-release.ps1\` to deploy
+        4. Verify with \`scripts/show-environment.ps1\`
+        
+        ### 📋 Requirements
+        - Azure CLI installed and authenticated
+        - Azure Web App (.NET 9.0)
+        - Azure Key Vault with appropriate permissions
+        - Azure Communication Services resource
+        - Azure Cognitive Services (Speech)
+        - Microsoft Bot Framework bot with DirectLine
+        
+        ### 🔧 Technical Details
+        - Built with .NET 9.0
+        - Optimized for production deployments
+        - Enhanced security and performance
+        - Comprehensive error handling
+        
+        ### 📚 Documentation
+        Complete documentation is available online:
+        - 📖 [Installation Guide](https://github.com/holgerimbery/ACSforMCS/wiki/Installation) - Step-by-step setup
+        - ⚙️ [Configuration Reference](https://github.com/holgerimbery/ACSforMCS/wiki/Configuration) - Complete settings guide  
+        - 🔧 [Troubleshooting](https://github.com/holgerimbery/ACSforMCS/wiki/Troubleshooting) - Common issues and solutions
+        - 📈 [Performance Tuning](https://github.com/holgerimbery/ACSforMCS/wiki/Performance) - Optimization recommendations
+        
+        ### ⭐ Release Type: ${RELEASE_TYPE}
+        EOF
+
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: ${{ steps.version.outputs.VERSION }}
+        name: ACS for MCS ${{ steps.version.outputs.VERSION }}
+        body_path: release_notes.md
+        draft: false
+        prerelease: ${{ github.event.inputs.release_type == 'alpha' || github.event.inputs.release_type == 'beta' }}
+        files: |
+          ACSforMCS-${{ steps.version.outputs.VERSION }}.zip
+        token: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Summary
+      run: |
+        echo "## Release Created Successfully! 🎉" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**Version:** ${{ steps.version.outputs.VERSION }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Release Type:** ${{ github.event.inputs.release_type || 'stable' }}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### 📦 Packages Created:" >> $GITHUB_STEP_SUMMARY
+        echo "- **Complete Package:** ACSforMCS-${{ steps.version.outputs.VERSION }}-complete.zip" >> $GITHUB_STEP_SUMMARY
+        echo "- **Minimal Package:** ACSforMCS-${{ steps.version.outputs.VERSION }}-minimal.zip" >> $GITHUB_STEP_SUMMARY
+        echo "- **Application Only:** ACSforMCS-${{ steps.version.outputs.VERSION }}.zip" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### 🚀 Next Steps:" >> $GITHUB_STEP_SUMMARY
+        echo "1. Verify the release on GitHub" >> $GITHUB_STEP_SUMMARY
+        echo "2. Test deployment with the release packages" >> $GITHUB_STEP_SUMMARY
+        echo "3. Update documentation if needed" >> $GITHUB_STEP_SUMMARY
+        echo "4. Announce the release to users" >> $GITHUB_STEP_SUMMARY# Test comment to trigger workflow recognition

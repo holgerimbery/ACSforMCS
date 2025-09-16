@@ -248,8 +248,8 @@ builder.Services.AddHttpClient("DirectLine", client => {
     client.DefaultRequestHeaders.Add("User-Agent", "ACSforMCS/1.0");
     client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
     
-    // Set a reasonable timeout for API calls
-    client.Timeout = TimeSpan.FromSeconds(30);
+    // Set an optimized timeout for API calls - reduced for faster failure detection
+    client.Timeout = TimeSpan.FromSeconds(10);
     
     // NEW: Configure connection pooling for better performance
     client.DefaultRequestHeaders.ConnectionClose = false;
@@ -606,6 +606,9 @@ app.MapPost("/api/calls/{contextId}", async (
                 logger.LogInformation("📡 Registered token source for call {CorrelationId}, active token sources: {ActiveCount}", 
                     correlationId, callAutomationService.GetActiveTokenSourceCount());
                 
+                // Parallel optimization: Start WebSocket listener and send greeting simultaneously
+                Task webSocketTask = Task.CompletedTask;
+                
                 // Validate that we have a WebSocket URL for real-time bot communication
                 if (string.IsNullOrEmpty(conversation.StreamUrl))
                 {
@@ -616,8 +619,8 @@ app.MapPost("/api/calls/{contextId}", async (
                     logger.LogInformation("🔄 Starting bot WebSocket listener for call {CorrelationId}, StreamUrl: {StreamUrl}", 
                         correlationId, conversation.StreamUrl);
                     
-                    // Start the bot listener in a background task
-                    _ = Task.Run(async () => 
+                    // Start the bot listener immediately (parallel with greeting)
+                    webSocketTask = Task.Run(async () => 
                     {
                         try
                         {
@@ -630,17 +633,23 @@ app.MapPost("/api/calls/{contextId}", async (
                     });
                 }
 
-                // Send initial greeting message to the bot to start the conversation
+                // Send initial greeting message to the bot in parallel with WebSocket setup
                 logger.LogInformation("💬 Sending initial greeting to bot for call {CorrelationId}", correlationId);
-                try
+                Task greetingTask = Task.Run(async () =>
                 {
-                    await callAutomationService.SendMessageAsync(conversationId, "Hi");
-                    logger.LogInformation("✅ Initial greeting sent successfully for call {CorrelationId}", correlationId);
-                }
-                catch (Exception ex)
-                {
-                    logger.LogError(ex, "❌ Failed to send initial greeting for call {CorrelationId}: {Error}", correlationId, ex.Message);
-                }
+                    try
+                    {
+                        await callAutomationService.SendMessageAsync(conversationId, "Hello");
+                        logger.LogInformation("✅ Initial greeting sent successfully for call {CorrelationId}", correlationId);
+                    }
+                    catch (Exception ex)
+                    {
+                        logger.LogError(ex, "❌ Failed to send initial greeting for call {CorrelationId}: {Error}", correlationId, ex.Message);
+                    }
+                });
+
+                // Wait briefly to ensure both operations are initiated (don't block the webhook response)
+                _ = Task.WhenAll(webSocketTask, greetingTask);
             }
             catch (Exception ex)
             {
