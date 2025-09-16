@@ -65,6 +65,7 @@ $InformationPreference = "Continue"
 
 # Script configuration
 $ProjectFile = "ACSforMCS.csproj"
+$script:IsReleasePackage = $false  # Will be set during prerequisites check
 $RequiredSecrets = @(
     "AcsConnectionString",
     "DirectLineSecret", 
@@ -103,11 +104,14 @@ function Test-Prerequisites {
     
     $issues = @()
     
-    # Check if we're in the right directory
-    if (-not (Test-Path $ProjectFile)) {
-        $issues += "Project file '$ProjectFile' not found. Run this script from the project root directory."
+    # Check if we're in development environment (has project file) or release package
+    $isDevelopment = Test-Path $ProjectFile
+    if ($isDevelopment) {
+        Write-Success "Development environment detected: $ProjectFile found"
+        $script:IsReleasePackage = $false
     } else {
-        Write-Success "Project file found: $ProjectFile"
+        Write-Success "Release package environment detected: No project file found"
+        $script:IsReleasePackage = $true
     }
     
     # Check Azure CLI
@@ -126,12 +130,16 @@ function Test-Prerequisites {
         $issues += "Azure CLI not authenticated. Run 'az login' first."
     }
     
-    # Check .NET SDK
-    try {
-        $dotnetVersion = dotnet --version
-        Write-Success ".NET SDK version: $dotnetVersion"
-    } catch {
-        $issues += ".NET SDK not found. Install from: https://dotnet.microsoft.com/download"
+    # Check .NET SDK only if in development environment
+    if ($isDevelopment) {
+        try {
+            $dotnetVersion = dotnet --version
+            Write-Success ".NET SDK version: $dotnetVersion"
+        } catch {
+            $issues += ".NET SDK not found. Install from: https://dotnet.microsoft.com/download"
+        }
+    } else {
+        Write-Information ".NET SDK check skipped for release package environment"
     }
     
     # Check PowerShell version
@@ -187,14 +195,20 @@ function Get-AvailableKeyVaults {
 
 function Resolve-KeyVaultName {
     if ($ValidateOnly) {
-        # In validation mode, try to get from existing user secrets first
-        $existingVault = Get-ExistingKeyVaultName
-        if ($existingVault) {
-            Write-Information "Using existing Key Vault configuration: $existingVault"
-            return $existingVault
-        } else {
-            throw "No existing Key Vault configuration found. Run without -ValidateOnly to set up configuration."
+        # In validation mode, try to get from existing configuration first
+        if (-not $script:IsReleasePackage) {
+            $existingVault = Get-ExistingKeyVaultName
+            if ($existingVault) {
+                Write-Information "Using existing Key Vault configuration: $existingVault"
+                return $existingVault
+            }
         }
+        
+        # For release packages or no existing config, require KeyVaultName parameter
+        if (-not $KeyVaultName) {
+            throw "No existing Key Vault configuration found. Run without -ValidateOnly and provide -KeyVaultName parameter."
+        }
+        return $KeyVaultName
     }
     
     if ($KeyVaultName) {
@@ -202,7 +216,23 @@ function Resolve-KeyVaultName {
         return $KeyVaultName
     }
     
-    # Try to get from existing user secrets
+    # For release packages, KeyVaultName is required
+    if ($script:IsReleasePackage) {
+        Write-Information "Release package environment detected."
+        Write-Information "Please specify the Key Vault name using the -KeyVaultName parameter."
+        Write-Information ""
+        Write-Information "Example: .\scripts\setup-configuration.ps1 -KeyVaultName 'your-keyvault-name'"
+        Write-Information ""
+        
+        do {
+            $KeyVaultName = Read-Host "Enter your Azure Key Vault name"
+        } while ([string]::IsNullOrWhiteSpace($KeyVaultName))
+        
+        Write-Information "Using Key Vault: $KeyVaultName"
+        return $KeyVaultName
+    }
+    
+    # For development environment, try to auto-detect from existing user secrets
     $existingVault = Get-ExistingKeyVaultName
     if ($existingVault) {
         Write-Information "Found existing Key Vault configuration: $existingVault"
@@ -297,24 +327,35 @@ function Initialize-UserSecrets {
     param([string]$VaultName)
     
     if ($ValidateOnly) {
-        Write-Information "Validation mode: Skipping user secrets initialization"
+        Write-Information "Validation mode: Skipping configuration initialization"
         return
     }
     
-    Write-Header "INITIALIZING USER SECRETS"
-    
-    try {
-        # Initialize user secrets if not already done
-        dotnet user-secrets init --project $ProjectFile | Out-Null
-        Write-Success "User secrets initialized"
+    if ($script:IsReleasePackage) {
+        Write-Header "SETTING ENVIRONMENT VARIABLES (Release Package)"
         
-        # Set Key Vault endpoint
+        # For release packages, use environment variables instead of user secrets
         $keyVaultEndpoint = "https://$VaultName.vault.azure.net/"
-        dotnet user-secrets set "KeyVault:Endpoint" $keyVaultEndpoint --project $ProjectFile | Out-Null
-        Write-Success "Key Vault endpoint configured: $keyVaultEndpoint"
+        [Environment]::SetEnvironmentVariable("KeyVault__Endpoint", $keyVaultEndpoint, "User")
+        Write-Success "Key Vault endpoint configured as environment variable: $keyVaultEndpoint"
+        Write-Information "Note: Restart PowerShell for environment variables to take effect."
         
-    } catch {
-        throw "Failed to initialize user secrets: $($_.Exception.Message)"
+    } else {
+        Write-Header "INITIALIZING USER SECRETS (Development)"
+        
+        try {
+            # Initialize user secrets if not already done
+            dotnet user-secrets init --project $ProjectFile | Out-Null
+            Write-Success "User secrets initialized"
+            
+            # Set Key Vault endpoint
+            $keyVaultEndpoint = "https://$VaultName.vault.azure.net/"
+            dotnet user-secrets set "KeyVault:Endpoint" $keyVaultEndpoint --project $ProjectFile | Out-Null
+            Write-Success "Key Vault endpoint configured in user secrets: $keyVaultEndpoint"
+            
+        } catch {
+            throw "Failed to initialize user secrets: $($_.Exception.Message)"
+        }
     }
 }
 
@@ -327,21 +368,31 @@ function Show-ValidationSummary {
     
     Write-Header "CONFIGURATION VALIDATION"
     
-    if ($IsValidationOnly) {
-        # In validation mode, check if user secrets are configured
-        try {
-            $secretsOutput = dotnet user-secrets list --project $ProjectFile 2>$null
-            $hasKeyVaultEndpoint = $secretsOutput | Where-Object { $_ -match "KeyVault:Endpoint" }
-            if ($hasKeyVaultEndpoint) {
-                Write-Success "KeyVault:Endpoint configured: $VaultName"
-            } else {
-                Write-Warning "KeyVault:Endpoint not configured in user secrets"
-            }
-        } catch {
-            Write-Warning "KeyVault:Endpoint not configured in user secrets"
+    if ($script:IsReleasePackage) {
+        # Check environment variables for release packages
+        $keyVaultEndpoint = [Environment]::GetEnvironmentVariable("KeyVault__Endpoint", "User")
+        if ($keyVaultEndpoint) {
+            Write-Success "KeyVault__Endpoint environment variable configured: $keyVaultEndpoint"
+        } else {
+            Write-Warning "KeyVault__Endpoint environment variable not configured"
         }
     } else {
-        Write-Success "KeyVault:Endpoint configured: $VaultName"
+        # Check user secrets for development environment
+        if ($IsValidationOnly) {
+            try {
+                $secretsOutput = dotnet user-secrets list --project $ProjectFile 2>$null
+                $hasKeyVaultEndpoint = $secretsOutput | Where-Object { $_ -match "KeyVault:Endpoint" }
+                if ($hasKeyVaultEndpoint) {
+                    Write-Success "KeyVault:Endpoint configured in user secrets: $VaultName"
+                } else {
+                    Write-Warning "KeyVault:Endpoint not configured in user secrets"
+                }
+            } catch {
+                Write-Warning "KeyVault:Endpoint not configured in user secrets"
+            }
+        } else {
+            Write-Success "KeyVault:Endpoint configured in user secrets: $VaultName"
+        }
     }
     
     foreach ($secretName in $RequiredSecrets) {
@@ -372,7 +423,11 @@ function Show-ValidationSummary {
         if ($IsValidationOnly) {
             Write-Information ""
             Write-Information "To fix configuration issues, run:"
-            Write-Information "  .\scripts\setup-configuration.ps1 -Force"
+            if ($script:IsReleasePackage) {
+                Write-Information "  .\scripts\setup-configuration.ps1 -KeyVaultName '$VaultName' -Force"
+            } else {
+                Write-Information "  .\scripts\setup-configuration.ps1 -Force"
+            }
         }
     }
 }
