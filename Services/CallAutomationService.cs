@@ -322,7 +322,7 @@ namespace ACSforMCS.Services
             }
 
             using var webSocket = new ClientWebSocket();
-            webSocket.Options.KeepAliveInterval = TimeSpan.FromSeconds(30); // Keep connection alive
+            webSocket.Options.KeepAliveInterval = TimeSpan.FromSeconds(15); // Faster keep-alive for better responsiveness
             
             try
             {
@@ -351,10 +351,10 @@ namespace ACSforMCS.Services
                         }
                     },
                     null,
-                    TimeSpan.FromSeconds(45),  // Initial delay
-                    TimeSpan.FromSeconds(45)); // Repeat interval
+                    TimeSpan.FromSeconds(5),   // Reduced initial delay for faster startup
+                    TimeSpan.FromSeconds(30)); // Reduced repeat interval for better responsiveness
 
-                var buffer = new byte[4096];
+                var buffer = new byte[8192]; // Increased buffer size for better throughput
                 var messageBuilder = new StringBuilder();
 
                 // Main message processing loop
@@ -686,8 +686,8 @@ namespace ACSforMCS.Services
                         "Your call is being transferred. If you are disconnected, an agent will call you back within a few minutes.", 
                         cancellationToken);
                     
-                    // Optimized delay for faster mode
-                    var finalDelayMs = _voiceOptions.EnableFastMode ? 1000 : 2000;
+                    // Optimized delay for faster transfer processing
+                    var finalDelayMs = _voiceOptions.EnableFastMode ? 500 : 1000;
                     await Task.Delay(finalDelayMs, cancellationToken);
                     return true;
                 }

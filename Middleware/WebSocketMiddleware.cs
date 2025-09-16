@@ -101,14 +101,14 @@ namespace ACSforMCS.Middleware
                         // Main WebSocket message processing loop
                         while (webSocket.State == WebSocketState.Open || webSocket.State == WebSocketState.CloseSent)
                         {
-                            // Rent buffer from shared pool for memory efficiency (4KB chunks)
-                            byte[] receiveBuffer = ArrayPool<byte>.Shared.Rent(4096);
+                            // Rent larger buffer from shared pool for better throughput (8KB chunks)
+                            byte[] receiveBuffer = ArrayPool<byte>.Shared.Rent(8192);
                             
                             // Set a 20-minute timeout for WebSocket operations
                             var cancellationToken = new CancellationTokenSource(TimeSpan.FromSeconds(1200)).Token;
                             
                             WebSocketReceiveResult receiveResult = await webSocket.ReceiveAsync(
-                                new ArraySegment<byte>(receiveBuffer, 0, 4096), 
+                                new ArraySegment<byte>(receiveBuffer, 0, 8192), 
                                 cancellationToken);
 
                             // Process data messages (ignore close messages)
