@@ -73,7 +73,7 @@ jobs:
     - name: Create deployment package
       run: |
         cd publish
-        zip -r ../ACSforMCS-${{ steps.version.outputs.VERSION }}.zip .
+        zip -r ../deployment-app.zip .
         cd ..
 
     - name: Create release directories
@@ -84,7 +84,7 @@ jobs:
     - name: Copy deployment files
       run: |
         # Copy the deployment zip to deployment folder
-        cp ACSforMCS-${{ steps.version.outputs.VERSION }}.zip release-package/deployment/
+        cp deployment-app.zip release-package/deployment/ACSforMCS-${{ steps.version.outputs.VERSION }}.zip
         # Copy PowerShell scripts
         cp scripts/*.ps1 release-package/scripts/
         cp scripts/README-DEPLOYMENT.md release-package/deployment/
