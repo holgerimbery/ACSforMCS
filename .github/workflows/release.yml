@@ -307,4 +307,4 @@ jobs:
         echo "1. Verify the release on GitHub" >> $GITHUB_STEP_SUMMARY
         echo "2. Test deployment with the release packages" >> $GITHUB_STEP_SUMMARY
         echo "3. Update documentation if needed" >> $GITHUB_STEP_SUMMARY
-        echo "4. Announce the release to users" >> $GITHUB_STEP_SUMMARY
+        echo "4. Announce the release to users" >> $GITHUB_STEP_SUMMARY# Test comment to trigger workflow recognition
