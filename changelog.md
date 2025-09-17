@@ -5,7 +5,7 @@ All notable changes to ACS for MCS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [v0.6.1] - 2025-09-17 
 
 ### Added
 - GitHub Actions automated release pipeline
@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Configuration validation and setup tools
 - Parallel WebSocket setup for improved performance
 - Enhanced WebSocket buffer management (4KB → 8KB)
+- release package for easy deployment for non developers
 
 ### Changed
 - Optimized speech recognition timing (EndSilenceTimeoutMs: 2000ms → 1500ms)

@@ -14,6 +14,57 @@
       "problemMatcher": "$msCompile"
     },
     {
+      "label": "Create Azure Resources",
+      "type": "shell",
+      "command": "pwsh",
+      "args": [
+        "-File",
+        "${workspaceFolder}/scripts/create-azure-resources.ps1",
+        "-ApplicationName",
+        "${input:applicationName}",
+        "-Location",
+        "${input:azureLocation}",
+        "-Environment",
+        "${input:environment}"
+      ],
+      "group": "build",
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "shared",
+        "showReuseMessage": true,
+        "clear": false
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Validate Azure Resource Names",
+      "type": "shell",
+      "command": "pwsh",
+      "args": [
+        "-File",
+        "${workspaceFolder}/scripts/create-azure-resources.ps1",
+        "-ApplicationName",
+        "${input:applicationName}",
+        "-Location",
+        "${input:azureLocation}",
+        "-Environment",
+        "${input:environment}",
+        "-ValidateOnly"
+      ],
+      "group": "build",
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "shared",
+        "showReuseMessage": true,
+        "clear": false
+      },
+      "problemMatcher": []
+    },
+    {
       "label": "Set Development BaseUri",
       "type": "shell",
       "command": "az",
@@ -211,6 +262,42 @@
     }
   ],
   "inputs": [
+    {
+      "id": "applicationName",
+      "description": "Application Name (3-15 characters, lowercase alphanumeric only)",
+      "default": "myproject",
+      "type": "promptString"
+    },
+    {
+      "id": "azureLocation",
+      "description": "Azure Region",
+      "default": "West Europe",
+      "type": "pickString",
+      "options": [
+        "West Europe",
+        "East US",
+        "East US 2",
+        "West US 2",
+        "Central US",
+        "North Europe",
+        "South Central US",
+        "West Central US",
+        "UK South",
+        "Australia East",
+        "Southeast Asia"
+      ]
+    },
+    {
+      "id": "environment",
+      "description": "Environment Type",
+      "default": "prod",
+      "type": "pickString",
+      "options": [
+        "dev",
+        "test", 
+        "prod"
+      ]
+    },
     {
       "id": "keyVaultName",
       "description": "Azure Key Vault Name (e.g., kv-resource-base-name)",

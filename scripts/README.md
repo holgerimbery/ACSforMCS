@@ -4,6 +4,9 @@ This folder contains PowerShell scripts for automated environment management and
 
 ## Scripts Overview
 
+### Resource Creation
+- **`create-azure-resources.ps1`** - **🚀 New Projects**: Create all required Azure resources with name validation
+
 ### Core Configuration
 - **`setup-configuration.ps1`** - **🔧 Start Here**: Initialize and validate local configuration
 - **`show-environment.ps1`** - Display current environment status and configuration
@@ -17,7 +20,19 @@ This folder contains PowerShell scripts for automated environment management and
 
 ## Quick Start Workflow
 
-### First Time Setup
+### For New Projects (No Azure Resources Yet)
+```powershell
+# 1. Create all required Azure resources
+.\scripts\create-azure-resources.ps1 -ApplicationName "myproject"
+
+# 2. Initialize configuration using the created resources
+.\scripts\setup-configuration.ps1 -KeyVaultName "kv-myproject-prod"
+
+# 3. Deploy application
+.\scripts\deploy-application.ps1
+```
+
+### First Time Setup (Existing Azure Resources)
 ```powershell
 # 1. Initialize configuration (auto-detects Key Vault or prompts for selection)
 .\scripts\setup-configuration.ps1
@@ -66,7 +81,40 @@ Required Key Vault secrets:
 
 ## Features
 
-### 🔧 **setup-configuration.ps1**
+### � **create-azure-resources.ps1**
+- Creates all required Azure resources for ACS for MCS
+- Validates name availability before resource creation
+- Follows established naming conventions (kv-, asp-, app-, etc.)
+- Checks Azure Web App name globally for availability
+- Configures optimal settings for .NET 9.0 applications
+- Provides connection strings and endpoints for immediate use
+- Saves configuration information for setup scripts
+- Validation-only mode to test names without creating resources
+
+**Usage Examples:**
+```powershell
+# Create resources for new project
+.\scripts\create-azure-resources.ps1 -ApplicationName "myproject"
+
+# Create in different region/environment
+.\scripts\create-azure-resources.ps1 -ApplicationName "myapp" -Location "East US" -Environment "dev"
+
+# Test name availability only
+.\scripts\create-azure-resources.ps1 -ApplicationName "test" -ValidateOnly
+
+# Skip confirmations
+.\scripts\create-azure-resources.ps1 -ApplicationName "prod" -Force
+```
+
+**Resources Created:**
+- Resource Group: `rg-{app}-{env}`
+- Key Vault: `kv-{app}-{env}`
+- Azure Communication Services: `acs-{app}-{env}`
+- Cognitive Services: `cog-speech-{app}-{env}`
+- App Service Plan: `asp-{app}-{env}`
+- Web App: `app-{app}-{env}`
+
+### �🔧 **setup-configuration.ps1**
 - Auto-detects existing Key Vault configuration from user secrets
 - Interactive Key Vault selection if multiple vaults available
 - Validates access to all required secrets
