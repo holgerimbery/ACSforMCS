@@ -17,6 +17,15 @@ on:
         - stable
         - beta
         - alpha
+      custom_notes:
+        description: 'Custom release notes (optional - overrides CHANGELOG.md)'
+        required: false
+        type: string
+      include_commits:
+        description: 'Include recent commits in release notes'
+        required: false
+        default: true
+        type: boolean
 
   # Automatic trigger on tag creation
   push:
@@ -237,10 +246,53 @@ jobs:
     - name: Generate release notes
       id: release_notes
       run: |
+        VERSION="${{ steps.version.outputs.VERSION }}"
         RELEASE_TYPE="${{ github.event.inputs.release_type || 'stable' }}"
-        cat > release_notes.md << EOF
-        ## ACS for MCS ${{ steps.version.outputs.VERSION }}
+        INCLUDE_COMMITS="${{ github.event.inputs.include_commits || 'true' }}"
+        CUSTOM_NOTES="${{ github.event.inputs.custom_notes }}"
         
+        echo "Generating release notes for version: $VERSION"
+        
+        # Initialize release notes file
+        cat > release_notes.md << EOF
+        ## ACS for MCS $VERSION
+        
+        EOF
+        
+        # Option 1: Use custom notes if provided (manual override)
+        if [ ! -z "$CUSTOM_NOTES" ]; then
+          echo "Using custom release notes provided by user"
+          echo "$CUSTOM_NOTES" >> release_notes.md
+          
+        # Option 2: Extract from CHANGELOG.md (primary source)
+        elif [ -f "CHANGELOG.md" ]; then
+          echo "Extracting release notes from CHANGELOG.md"
+          
+          # Extract the section for this version from CHANGELOG.md
+          # Look for the version header and extract until the next version or end of file
+          if grep -q "## \[$VERSION\]" CHANGELOG.md || grep -q "## $VERSION" CHANGELOG.md; then
+            echo "Found version $VERSION in CHANGELOG.md"
+            
+            # Extract content between version headers, excluding the version line itself
+            sed -n "/## \[$VERSION\]/,/## \[/p" CHANGELOG.md | sed '1d;$d' > changelog_section.md 2>/dev/null || \
+            sed -n "/## $VERSION/,/## /p" CHANGELOG.md | sed '1d;$d' > changelog_section.md
+            
+            # Check if we got meaningful content
+            if [ -s changelog_section.md ] && [ $(wc -l < changelog_section.md) -gt 2 ]; then
+              cat changelog_section.md >> release_notes.md
+              echo "Successfully extracted changelog content"
+            else
+              echo "Changelog section found but appears empty, using fallback"
+              USE_FALLBACK=true
+            fi
+          else
+            echo "Version $VERSION not found in CHANGELOG.md, using fallback"
+            USE_FALLBACK=true
+          fi
+          
+          # If changelog extraction failed, use fallback template
+          if [ "$USE_FALLBACK" = "true" ]; then
+            cat >> release_notes.md << 'EOF'
         ### What's New
         - Pre-built deployment packages for easy installation
         - Comprehensive documentation and setup guides
@@ -254,13 +306,61 @@ jobs:
         - **Setup documentation** with links to comprehensive guides
         
         ### Performance Improvements
-        - ~2 seconds faster response times through optimized speech recognition
+        - Enhanced response times through optimized speech recognition
         - Parallel WebSocket setup for reduced latency
         - Enhanced buffer management for better throughput
         - Optimized TTS playback speed
+        EOF
+          fi
+        
+        # Option 3: Complete fallback if no CHANGELOG.md
+        else
+          echo "No CHANGELOG.md found, using static template"
+          cat >> release_notes.md << 'EOF'
+        ### What's New
+        - Pre-built deployment packages for easy installation
+        - Comprehensive documentation and setup guides
+        - Performance optimizations for faster response times
+        - Automated deployment scripts with validation
+        
+        ### Release Package
+        This release contains everything needed for deployment:
+        - **Pre-built .NET 9.0 application** ready for Azure Web Apps
+        - **PowerShell deployment scripts** with validation and configuration
+        - **Setup documentation** with links to comprehensive guides
+        EOF
+        fi
+        
+        # Add recent commits if requested (supplement)
+        if [ "$INCLUDE_COMMITS" = "true" ] && [ -z "$CUSTOM_NOTES" ]; then
+          echo "Adding recent commits to release notes"
+          
+          # Get the previous tag to compare against
+          PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          
+          if [ ! -z "$PREVIOUS_TAG" ]; then
+            echo "Comparing against previous tag: $PREVIOUS_TAG"
+            
+            # Get commits since last tag, formatted nicely
+            RECENT_COMMITS=$(git log ${PREVIOUS_TAG}..HEAD --pretty=format:"- %s (%h)" --no-merges | head -10)
+            
+            if [ ! -z "$RECENT_COMMITS" ]; then
+              cat >> release_notes.md << EOF
+        
+        ### Recent Changes Since $PREVIOUS_TAG
+        $RECENT_COMMITS
+        EOF
+            fi
+          else
+            echo "No previous tag found, skipping commit history"
+          fi
+        fi
+        
+        # Always add standard deployment information
+        cat >> release_notes.md << 'EOF'
         
         ### Deployment
-        1. Download the appropriate package
+        1. Download the release package below
         2. Run `scripts/setup-configuration.ps1` to configure
         3. Run `scripts/deploy-application.ps1` to deploy
         4. Verify with `scripts/show-environment.ps1`
@@ -271,13 +371,7 @@ jobs:
         - Azure Key Vault with appropriate permissions
         - Azure Communication Services resource
         - Azure Cognitive Services (Speech)
-        - Microsoft Bot Framework bot with DirectLine
-        
-        ### Technical Details
-        - Built with .NET 9.0
-        - Optimized for production deployments
-        - Enhanced security and performance
-        - Comprehensive error handling
+        - Microsoft Copilot Studio agent with DirectLine
         
         ### Documentation
         Complete documentation is available online:
@@ -285,9 +379,21 @@ jobs:
         - [Configuration Reference](https://github.com/holgerimbery/ACSforMCS/wiki/Configuration) - Complete settings guide  
         - [Troubleshooting](https://github.com/holgerimbery/ACSforMCS/wiki/Troubleshooting) - Common issues and solutions
         - [Performance Tuning](https://github.com/holgerimbery/ACSforMCS/wiki/Performance) - Optimization recommendations
+        EOF
+        
+        # Add release type information
+        cat >> release_notes.md << EOF
         
         ### Release Type: ${RELEASE_TYPE}
         EOF
+        
+        echo "Release notes generation completed"
+        
+        # Output the generated notes for debugging
+        echo "Generated release notes:"
+        echo "========================"
+        cat release_notes.md
+        echo "========================"
 
     - name: Create GitHub Release
       uses: softprops/action-gh-release@v1
