@@ -33,12 +33,12 @@ The deployment creates these Azure resources with consistent naming:
 
 | Resource Type | Example Name | Purpose |
 |---------------|--------------|---------|
-| App Service Plan | `acsformcs-asp-prod-abc123` | Hosts your application |
-| App Service | `acsformcs-app-prod-abc123` | Your ACS for MCS application |
-| Key Vault | `acsformcskprodabc123` | Stores configuration secrets |
-| Communication Services | `acsformcs-acs-prod-abc123` | Handles voice calls |
-| Speech Services | `acsformcs-cs-prod-abc123` | Voice recognition/synthesis |
-| Application Insights | `acsformcs-ai-prod-abc123` | Monitoring (if enabled) |
+| App Service Plan | `asp-agentvoicea1b2c3-prod` | Hosts your application |
+| App Service | `app-agentvoicea1b2c3-prod` | Your ACS for MCS application |
+| Key Vault | `kv-agentvoicea1b2c3-prod` | Stores configuration secrets |
+| Communication Services | `acs-agentvoicea1b2c3-prod` | Handles voice calls |
+| Speech Services | `cs-agentvoicea1b2c3-prod` | Voice recognition/synthesis |
+| Application Insights | `ai-agentvoicea1b2c3-prod` | Monitoring (if enabled) |
 
 ## Post-Deployment Workflow
 

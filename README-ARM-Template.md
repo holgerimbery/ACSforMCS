@@ -79,9 +79,9 @@ After the ARM template deployment completes:
 ## Template Features
 
 ### Smart Naming Convention
-- All resources use consistent naming: `{projectName}-{type}-{environment}-{uniqueSuffix}`
-- Example: `acsformcs-app-prod-abc123`
-- Ensures global uniqueness while maintaining readability
+- All resources use consistent naming: `{type}-{projectName}{random6chars}-{environment}`
+- Example: `app-agentvoicea1b2c3-prod`
+- Random 6-character alphanumeric suffix ensures global uniqueness automatically
 
 ### Automatic Secret Population
 The template automatically configures these Key Vault secrets:

@@ -10,11 +10,11 @@
   "parameters": {
     "projectName": {
       "type": "string",
-      "defaultValue": "acsformcs",
+      "defaultValue": "agentvoice",
       "minLength": 3,
       "maxLength": 15,
       "metadata": {
-        "description": "Base name for all resources. Will be used to generate unique resource names. Use lowercase letters and numbers only."
+        "description": "Base name for all resources. A random 6-character alphanumeric suffix will be automatically added to ensure global uniqueness (e.g., 'agentvoice' becomes 'app-agentvoicea1b2c3-prod'). Use lowercase letters and numbers only."
       }
     },
     "environment": {
@@ -135,7 +135,7 @@
       "type": "string",
       "defaultValue": "",
       "metadata": {
-        "description": "Phone number for the agent (optional, can be configured later via scripts or Azure Portal)"
+        "description": "Phone number for the agent (optional). Enter here if you already have a direct routing number. If you plan to purchase a number directly from Microsoft, leave empty and configure later via scripts."
       }
     },
     "directLineSecret": {
@@ -154,14 +154,14 @@
     }
   },
   "variables": {
-    "uniqueSuffix": "[substring(uniqueString(resourceGroup().id), 0, 6)]",
-    "appServicePlanName": "[format('{0}-asp-{1}-{2}', parameters('projectName'), parameters('environment'), variables('uniqueSuffix'))]",
-    "webAppName": "[format('{0}-app-{1}-{2}', parameters('projectName'), parameters('environment'), variables('uniqueSuffix'))]",
-    "keyVaultName": "[format('{0}kv{1}{2}', parameters('projectName'), parameters('environment'), variables('uniqueSuffix'))]",
-    "communicationServicesName": "[format('{0}-acs-{1}-{2}', parameters('projectName'), parameters('environment'), variables('uniqueSuffix'))]",
-    "cognitiveServicesName": "[format('{0}-cs-{1}-{2}', parameters('projectName'), parameters('environment'), variables('uniqueSuffix'))]",
-    "applicationInsightsName": "[format('{0}-ai-{1}-{2}', parameters('projectName'), parameters('environment'), variables('uniqueSuffix'))]",
-    "logAnalyticsWorkspaceName": "[format('{0}-law-{1}-{2}', parameters('projectName'), parameters('environment'), variables('uniqueSuffix'))]",
+    "uniqueSuffix": "[toLower(substring(uniqueString(resourceGroup().id, deployment().name), 0, 6))]",
+    "appServicePlanName": "[format('asp-{0}{1}-{2}', parameters('projectName'), variables('uniqueSuffix'), parameters('environment'))]",
+    "webAppName": "[format('app-{0}{1}-{2}', parameters('projectName'), variables('uniqueSuffix'), parameters('environment'))]",
+    "keyVaultName": "[format('kv-{0}{1}-{2}', parameters('projectName'), variables('uniqueSuffix'), parameters('environment'))]",
+    "communicationServicesName": "[format('acs-{0}{1}-{2}', parameters('projectName'), variables('uniqueSuffix'), parameters('environment'))]",
+    "cognitiveServicesName": "[format('cs-{0}{1}-{2}', parameters('projectName'), variables('uniqueSuffix'), parameters('environment'))]",
+    "applicationInsightsName": "[format('ai-{0}{1}-{2}', parameters('projectName'), variables('uniqueSuffix'), parameters('environment'))]",
+    "logAnalyticsWorkspaceName": "[format('law-{0}{1}-{2}', parameters('projectName'), variables('uniqueSuffix'), parameters('environment'))]",
     "baseUriSecret": "[if(equals(parameters('environment'), 'prod'), 'BaseUri-Production', 'BaseUri-Development')]"
   },
   "resources": [
