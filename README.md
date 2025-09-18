@@ -44,7 +44,7 @@ Web App deployment permissions
 ### Option 1: One-Click Azure Deployment (Recommended)
 Deploy everything with an interactive Azure Portal interface:
 
-[![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Fholgerimbery%2FACSforMCS%2Fdeplyonazurebutton%2Fazuredeploy.json/createUIDefinitionUri/https%3A%2F%2Fraw.githubusercontent.com%2Fholgerimbery%2FACSforMCS%2Fdeplyonazurebutton%2FcreateUiDefinition.json)
+[![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Fholgerimbery%2FACSforMCS%2Fmain%2Fazuredeploy.json/createUIDefinitionUri/https%3A%2F%2Fraw.githubusercontent.com%2Fholgerimbery%2FACSforMCS%2Fmain%2FcreateUiDefinition.json)
 
 **Post-deployment steps:**
 1. **Configure additional components** (see [Wiki](https://github.com/holgerimbery/ACSforMCS/wiki) for detailed guides):

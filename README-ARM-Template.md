@@ -4,7 +4,7 @@ This ARM template provides a one-click deployment solution for ACS for Microsoft
 
 ## Quick Deploy
 
-[![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Fholgerimbery%2FACSforMCS%2Fdeplyonazurebutton%2Fazuredeploy.json/createUIDefinitionUri/https%3A%2F%2Fraw.githubusercontent.com%2Fholgerimbery%2FACSforMCS%2Fdeplyonazurebutton%2FcreateUiDefinition.json)
+[![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Fholgerimbery%2FACSforMCS%2Fmain%2Fazuredeploy.json/createUIDefinitionUri/https%3A%2F%2Fraw.githubusercontent.com%2Fholgerimbery%2FACSforMCS%2Fmain%2FcreateUiDefinition.json)
 
 **⚠️ Important**: Before clicking "Deploy to Azure", you need to create a resource group first. The deployment interface will show you the exact resource group name to use based on your project name and environment selection.
 
