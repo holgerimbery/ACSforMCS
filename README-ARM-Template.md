@@ -76,6 +76,13 @@ After the ARM template deployment completes:
    .\show-environment.ps1
    ```
 
+5. **Configure Additional Components**
+   See the [Wiki](https://github.com/holgerimbery/ACSforMCS/wiki) for detailed configuration guides:
+   - [Phone number acquisition and setup](https://github.com/holgerimbery/ACSforMCS/wiki/Prerequisites-and-Setup#3-azure-communication-services-acs)
+   - [Copilot Studio agent configuration](https://github.com/holgerimbery/ACSforMCS/wiki/Prerequisites-and-Setup#5-microsoft-copilot-studio)
+   - [Complete deployment and environment management](https://github.com/holgerimbery/ACSforMCS/wiki/Azure-Web-App-Deployment)
+   - [Environment management scripts](https://github.com/holgerimbery/ACSforMCS/wiki/Environment-Management-Scripts)
+
 ## Template Features
 
 ### Smart Naming Convention

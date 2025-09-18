@@ -246,8 +246,7 @@
         "enableRbacAuthorization": false,
         "accessPolicies": [],
         "enableSoftDelete": true,
-        "softDeleteRetentionInDays": 7,
-        "enablePurgeProtection": false
+        "softDeleteRetentionInDays": 7
       },
       "tags": {
         "Project": "ACSforMCS",

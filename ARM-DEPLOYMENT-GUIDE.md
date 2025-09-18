@@ -73,6 +73,13 @@ cd C:\path\to\extracted\folder
 .\show-environment.ps1
 ```
 
+### 5. Configure Additional Components
+For complete setup, follow these detailed guides in the [Wiki](https://github.com/holgerimbery/ACSforMCS/wiki):
+- **[Phone Number Acquisition and Setup](https://github.com/holgerimbery/ACSforMCS/wiki/Prerequisites-and-Setup#3-azure-communication-services-acs)** - How to order and configure phone numbers
+- **[Copilot Studio Configuration](https://github.com/holgerimbery/ACSforMCS/wiki/Prerequisites-and-Setup#5-microsoft-copilot-studio)** - Configure agents for call handling
+- **[Azure Web App Deployment](https://github.com/holgerimbery/ACSforMCS/wiki/Azure-Web-App-Deployment)** - Complete deployment guide
+- **[Environment Management Scripts](https://github.com/holgerimbery/ACSforMCS/wiki/Environment-Management-Scripts)** - Automation and scripting
+
 ## Deployment Outputs
 
 The ARM template provides these useful outputs:
@@ -88,6 +95,7 @@ The ARM template provides these useful outputs:
 - **Name conflicts**: Template uses unique suffixes to prevent conflicts
 - **Permission errors**: Ensure you have Contributor access to the subscription/resource group
 - **Region availability**: Some SKUs may not be available in all regions
+- **Key Vault purge protection**: Template automatically configures appropriate purge protection settings
 
 ### Post-Deployment Issues
 - **App not starting**: Check Application Insights for errors
