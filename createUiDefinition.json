@@ -306,7 +306,7 @@
             "type": "Microsoft.Common.InfoBox",
             "options": {
               "icon": "Info",
-              "text": "After deployment, download the latest release package from GitHub and use the included PowerShell scripts to complete configuration and deploy your application code."
+              "text": "After deployment: 1) Get a phone number from your Communication Services resource, 2) Configure the Event Grid system topic, 3) Download the latest release package from GitHub and use the included PowerShell scripts to complete configuration and deploy your application code."
             }
           }
         ]

@@ -33,13 +33,13 @@ Deploy everything with an interactive Azure Portal interface:
 [![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Fholgerimbery%2FACSforMCS%2Fdeplyonazurebutton%2Fazuredeploy.json/createUIDefinitionUri/https%3A%2F%2Fraw.githubusercontent.com%2Fholgerimbery%2FACSforMCS%2Fdeplyonazurebutton%2FcreateUiDefinition.json)
 
 **Post-deployment steps:**
-1. Download the latest [release package](https://github.com/holgerimbery/ACSforMCS/releases)
-2. Extract and run `.\setup-configuration.ps1` to configure phone number and DirectLine secret
-3. Run `.\deploy-application.ps1` to deploy your application code
-4. **Configure additional components** (see [Wiki](https://github.com/holgerimbery/ACSforMCS/wiki) for detailed guides):
+1. **Configure additional components** (see [Wiki](https://github.com/holgerimbery/ACSforMCS/wiki) for detailed guides):
    - [Phone number configuration and setup](https://github.com/holgerimbery/ACSforMCS/wiki/Prerequisites-and-Setup#3-azure-communication-services-acs)
    - [Copilot Studio agent configuration](https://github.com/holgerimbery/ACSforMCS/wiki/Prerequisites-and-Setup#5-microsoft-copilot-studio)
    - [Complete deployment and environment management](https://github.com/holgerimbery/ACSforMCS/wiki/Azure-Web-App-Deployment)
+2. Download the latest [release package](https://github.com/holgerimbery/ACSforMCS/releases)
+3. Extract and run `.\setup-configuration.ps1` to configure phone number and DirectLine secret
+4. Run `.\deploy-application.ps1` to deploy your application code
 
 ### Option 2: New Projects (Automated Setup)
 For new projects without existing Azure resources, use our automated setup:

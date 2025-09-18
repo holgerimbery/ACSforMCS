@@ -318,6 +318,28 @@
     {
       "type": "Microsoft.KeyVault/vaults/secrets",
       "apiVersion": "2023-07-01",
+      "name": "[format('{0}/BaseUri-Development', variables('keyVaultName'))]",
+      "dependsOn": [
+        "[resourceId('Microsoft.KeyVault/vaults/accessPolicies', variables('keyVaultName'), 'add')]"
+      ],
+      "properties": {
+        "value": "[format('https://{0}.azurewebsites.net', variables('webAppName'))]"
+      }
+    },
+    {
+      "type": "Microsoft.KeyVault/vaults/secrets",
+      "apiVersion": "2023-07-01",
+      "name": "[format('{0}/BaseUri-Production', variables('keyVaultName'))]",
+      "dependsOn": [
+        "[resourceId('Microsoft.KeyVault/vaults/accessPolicies', variables('keyVaultName'), 'add')]"
+      ],
+      "properties": {
+        "value": "[format('https://{0}.azurewebsites.net', variables('webAppName'))]"
+      }
+    },
+    {
+      "type": "Microsoft.KeyVault/vaults/secrets",
+      "apiVersion": "2023-07-01",
       "name": "[format('{0}/AcsConnectionString', variables('keyVaultName'))]",
       "dependsOn": [
         "[resourceId('Microsoft.KeyVault/vaults/accessPolicies', variables('keyVaultName'), 'add')]",
