@@ -190,8 +190,7 @@
       "name": "[variables('webAppName')]",
       "location": "[parameters('location')]",
       "dependsOn": [
-        "[resourceId('Microsoft.Web/serverfarms', variables('appServicePlanName'))]",
-        "[resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName'))]"
+        "[resourceId('Microsoft.Web/serverfarms', variables('appServicePlanName'))]"
       ],
       "identity": {
         "type": "SystemAssigned"
@@ -245,6 +244,26 @@
         },
         "tenantId": "[subscription().tenantId]",
         "enableRbacAuthorization": false,
+        "accessPolicies": [],
+        "enableSoftDelete": true,
+        "softDeleteRetentionInDays": 7,
+        "enablePurgeProtection": false
+      },
+      "tags": {
+        "Project": "ACSforMCS",
+        "Environment": "[parameters('environment')]",
+        "DeployedBy": "ARM Template"
+      }
+    },
+    {
+      "type": "Microsoft.KeyVault/vaults/accessPolicies",
+      "apiVersion": "2023-07-01",
+      "name": "[format('{0}/add', variables('keyVaultName'))]",
+      "dependsOn": [
+        "[resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName'))]",
+        "[resourceId('Microsoft.Web/sites', variables('webAppName'))]"
+      ],
+      "properties": {
         "accessPolicies": [
           {
             "tenantId": "[subscription().tenantId]",
@@ -256,18 +275,7 @@
               ]
             }
           }
-        ],
-        "enableSoftDelete": true,
-        "softDeleteRetentionInDays": 7,
-        "enablePurgeProtection": false
-      },
-      "dependsOn": [
-        "[resourceId('Microsoft.Web/sites', variables('webAppName'))]"
-      ],
-      "tags": {
-        "Project": "ACSforMCS",
-        "Environment": "[parameters('environment')]",
-        "DeployedBy": "ARM Template"
+        ]
       }
     },
     {
@@ -275,7 +283,7 @@
       "apiVersion": "2023-07-01",
       "name": "[format('{0}/{1}', variables('keyVaultName'), variables('baseUriSecret'))]",
       "dependsOn": [
-        "[resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName'))]"
+        "[resourceId('Microsoft.KeyVault/vaults/accessPolicies', variables('keyVaultName'), 'add')]"
       ],
       "properties": {
         "value": "[format('https://{0}.azurewebsites.net', variables('webAppName'))]"
@@ -286,7 +294,7 @@
       "apiVersion": "2023-07-01",
       "name": "[format('{0}/AcsConnectionString', variables('keyVaultName'))]",
       "dependsOn": [
-        "[resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName'))]",
+        "[resourceId('Microsoft.KeyVault/vaults/accessPolicies', variables('keyVaultName'), 'add')]",
         "[resourceId('Microsoft.Communication/communicationServices', variables('communicationServicesName'))]"
       ],
       "properties": {
@@ -298,7 +306,7 @@
       "apiVersion": "2023-07-01",
       "name": "[format('{0}/CognitiveServiceEndpoint', variables('keyVaultName'))]",
       "dependsOn": [
-        "[resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName'))]",
+        "[resourceId('Microsoft.KeyVault/vaults/accessPolicies', variables('keyVaultName'), 'add')]",
         "[resourceId('Microsoft.CognitiveServices/accounts', variables('cognitiveServicesName'))]"
       ],
       "properties": {
@@ -310,7 +318,7 @@
       "apiVersion": "2023-07-01",
       "name": "[format('{0}/HealthCheckApiKey', variables('keyVaultName'))]",
       "dependsOn": [
-        "[resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName'))]"
+        "[resourceId('Microsoft.KeyVault/vaults/accessPolicies', variables('keyVaultName'), 'add')]"
       ],
       "properties": {
         "value": "[parameters('healthCheckApiKey')]"
@@ -322,7 +330,7 @@
       "apiVersion": "2023-07-01",
       "name": "[format('{0}/AgentPhoneNumber', variables('keyVaultName'))]",
       "dependsOn": [
-        "[resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName'))]"
+        "[resourceId('Microsoft.KeyVault/vaults/accessPolicies', variables('keyVaultName'), 'add')]"
       ],
       "properties": {
         "value": "[parameters('agentPhoneNumber')]"
@@ -334,7 +342,7 @@
       "apiVersion": "2023-07-01",
       "name": "[format('{0}/DirectLineSecret', variables('keyVaultName'))]",
       "dependsOn": [
-        "[resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName'))]"
+        "[resourceId('Microsoft.KeyVault/vaults/accessPolicies', variables('keyVaultName'), 'add')]"
       ],
       "properties": {
         "value": "[parameters('directLineSecret')]"
