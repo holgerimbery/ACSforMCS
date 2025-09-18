@@ -59,12 +59,21 @@ For new projects without existing Azure resources, use our automated setup:
 ### Option 3: Existing Azure Resources
 If you already have Azure resources configured:
 
-```powershell
-# 1. Download and extract the latest release package
-# 2. Configure application with existing resources
-.\scripts\setup-configuration.ps1 -KeyVaultName "your-keyvault-name"
+- Download the latest [release package](https://github.com/holgerimbery/ACSforMCS/releases)
 
-# 3. Deploy the application
+- **Configure additional components** (see [Wiki](https://github.com/holgerimbery/ACSforMCS/wiki) for detailed guides):
+   - [Phone number configuration and setup](https://github.com/holgerimbery/ACSforMCS/wiki/Prerequisites-and-Setup#3-azure-communication-services-acs)
+   - [Copilot Studio agent configuration](https://github.com/holgerimbery/ACSforMCS/wiki/Prerequisites-and-Setup#5-microsoft-copilot-studio)
+   - [Complete deployment and environment management](https://github.com/holgerimbery/ACSforMCS/wiki/Azure-Web-App-Deployment)
+
+```powershell
+# Configure application with existing resources
+.\scripts\setup-configuration.ps1 -KeyVaultName "your-keyvault-name"
+```
+
+
+```powershell
+# Deploy the application
 .\scripts\deploy-application.ps1
 ```
 
