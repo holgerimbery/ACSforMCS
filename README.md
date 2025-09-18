@@ -27,6 +27,20 @@ https://github.com/user-attachments/assets/c3f3c304-f743-4eb3-9f28-dd22338489c1
 
 ## Quick Start Deployment
 
+### Essential Requirements (local machine)
+- PowerShell 7.0 or Later   
+Download from: https://github.com/PowerShell/PowerShell/releases
+
+- Azure CLI   
+Must be installed and authenticated
+Install from: https://docs.microsoft.com/en-us/cli/azure/install-azure-cli   
+Must run az login before using scripts
+
+- Azure Permissions   
+Contributor or Owner role on the Azure subscription/resource group   
+Key Vault access permissions (get, list, set secrets)   
+Web App deployment permissions   
+
 ### Option 1: One-Click Azure Deployment (Recommended)
 Deploy everything with an interactive Azure Portal interface:
 
