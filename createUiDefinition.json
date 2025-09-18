@@ -1,0 +1,330 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/0.1.2-preview/CreateUIDefinition.MultiVm.json#",
+  "handler": "Microsoft.Azure.CreateUIDef",
+  "version": "0.1.2-preview",
+  "parameters": {
+    "config": {
+      "basics": {
+        "description": "Deploy Azure Communication Services for Microsoft Copilot Studio with all required resources. **IMPORTANT**: Before deployment, create a resource group with this naming convention: `rg-{projectName}{6-chars}-{environment}` (e.g., `rg-agentvoicea1b2c3-prod`). The deployment will show you the exact name to use.",
+        "location": {
+          "label": "Region",
+          "toolTip": "Select the Azure region where your resources will be deployed. Choose a region close to your users for best performance.",
+          "resourceTypes": [
+            "Microsoft.Web/serverfarms",
+            "Microsoft.Web/sites",
+            "Microsoft.KeyVault/vaults",
+            "Microsoft.CognitiveServices/accounts"
+          ]
+        }
+      }
+    },
+    "basics": [
+      {
+        "name": "resourceGroupInfo",
+        "type": "Microsoft.Common.InfoBox",
+        "options": {
+          "icon": "Info",
+          "text": "STEP 1: Create a resource group using the exact name shown below. The suffix is pre-populated but you can change it to customize your resource naming."
+        }
+      },
+      {
+        "name": "projectName",
+        "type": "Microsoft.Common.TextBox",
+        "label": "Project Name",
+        "placeholder": "agentvoice",
+        "defaultValue": "agentvoice",
+        "toolTip": "Base name for all resources (3-15 characters, lowercase letters and numbers only). A suffix will be added to ensure global uniqueness. You can specify your own suffix below or leave it empty for auto-generation.",
+        "constraints": {
+          "required": true,
+          "regex": "^[a-z0-9]{3,15}$",
+          "validationMessage": "Project name must be 3-15 characters long and contain only lowercase letters and numbers."
+        }
+      },
+      {
+        "name": "environment",
+        "type": "Microsoft.Common.DropDown",
+        "label": "Environment",
+        "placeholder": "Select environment",
+        "defaultValue": "Production",
+        "toolTip": "Environment type for resource naming and configuration",
+        "constraints": {
+          "required": true,
+          "allowedValues": [
+            {
+              "label": "Development",
+              "value": "dev"
+            },
+            {
+              "label": "Test",
+              "value": "test"
+            },
+            {
+              "label": "Staging",
+              "value": "stage"
+            },
+            {
+              "label": "Production",
+              "value": "prod"
+            }
+          ]
+        }
+      },
+      {
+        "name": "resourceSuffix",
+        "type": "Microsoft.Common.TextBox",
+        "label": "Resource Suffix",
+        "placeholder": "a1b2c3",
+        "defaultValue": "[toLower(substring(replace(replace(replace(guid(), '-', ''), '{', ''), '}', ''), 0, 6))]",
+        "toolTip": "6-character suffix for predictable resource naming. Auto-generated random value that you can see and modify if needed.",
+        "constraints": {
+          "required": true,
+          "regex": "^[a-z0-9]{6}$",
+          "validationMessage": "Must be exactly 6 characters using lowercase letters and numbers only."
+        }
+      },
+      {
+        "name": "resourceGroupName",
+        "type": "Microsoft.Common.InfoBox",
+        "options": {
+          "icon": "Info",
+          "text": "[concat('✅ Resource Group Name: rg-', basics('projectName'), basics('resourceSuffix'), '-', basics('environment'))]"
+        }
+      }
+    ],
+    "steps": [
+      {
+        "name": "appServiceConfig",
+        "label": "App Service Configuration",
+        "elements": [
+          {
+            "name": "appServicePlanSku",
+            "type": "Microsoft.Common.DropDown",
+            "label": "App Service Plan SKU",
+            "placeholder": "Select pricing tier",
+            "defaultValue": "Basic B1 (Recommended for testing)",
+            "toolTip": "Choose the App Service Plan pricing tier based on your performance and scaling needs",
+            "constraints": {
+              "required": true,
+              "allowedValues": [
+                {
+                  "label": "Free F1 (Limited, good for development)",
+                  "value": "F1"
+                },
+                {
+                  "label": "Shared D1 (Limited, basic testing)",
+                  "value": "D1"
+                },
+                {
+                  "label": "Basic B1 (Recommended for testing)",
+                  "value": "B1"
+                },
+                {
+                  "label": "Basic B2 (Enhanced testing)",
+                  "value": "B2"
+                },
+                {
+                  "label": "Basic B3 (High-end testing)",
+                  "value": "B3"
+                },
+                {
+                  "label": "Standard S1 (Recommended for production)",
+                  "value": "S1"
+                },
+                {
+                  "label": "Standard S2 (Production with scaling)",
+                  "value": "S2"
+                },
+                {
+                  "label": "Standard S3 (High-volume production)",
+                  "value": "S3"
+                },
+                {
+                  "label": "Premium P1v2 (High performance)",
+                  "value": "P1v2"
+                },
+                {
+                  "label": "Premium P2v2 (Very high performance)",
+                  "value": "P2v2"
+                },
+                {
+                  "label": "Premium P3v2 (Maximum performance)",
+                  "value": "P3v2"
+                },
+                {
+                  "label": "Premium P1v3 (Latest high performance)",
+                  "value": "P1v3"
+                },
+                {
+                  "label": "Premium P2v3 (Latest very high performance)",
+                  "value": "P2v3"
+                },
+                {
+                  "label": "Premium P3v3 (Latest maximum performance)",
+                  "value": "P3v3"
+                }
+              ]
+            }
+          },
+          {
+            "name": "enableApplicationInsights",
+            "type": "Microsoft.Common.CheckBox",
+            "label": "Enable Application Insights",
+            "toolTip": "Enable Application Insights for monitoring, logging, and performance tracking (recommended for production)",
+            "constraints": {
+              "required": false
+            }
+          },
+          {
+            "name": "enableBackup",
+            "type": "Microsoft.Common.CheckBox",
+            "label": "Enable App Service Backup",
+            "toolTip": "Enable automated backups for the App Service (requires Basic B1 or higher SKU)",
+            "constraints": {
+              "required": false
+            },
+            "visible": "[not(or(equals(steps('appServiceConfig').appServicePlanSku, 'F1'), equals(steps('appServiceConfig').appServicePlanSku, 'D1')))]"
+          }
+        ]
+      },
+      {
+        "name": "azureServicesConfig",
+        "label": "Azure Services Configuration",
+        "elements": [
+          {
+            "name": "communicationServicesSku",
+            "type": "Microsoft.Common.DropDown",
+            "label": "Communication Services Pricing",
+            "placeholder": "Select pricing tier",
+            "defaultValue": "Free F0 (Good for testing)",
+            "toolTip": "Choose the Azure Communication Services pricing tier",
+            "constraints": {
+              "required": true,
+              "allowedValues": [
+                {
+                  "label": "Free F0 (Good for testing)",
+                  "value": "F0"
+                },
+                {
+                  "label": "Standard S0 (Pay-as-you-go for production)",
+                  "value": "S0"
+                }
+              ]
+            }
+          },
+          {
+            "name": "cognitiveServicesSku",
+            "type": "Microsoft.Common.DropDown",
+            "label": "Speech Services Pricing",
+            "placeholder": "Select pricing tier",
+            "defaultValue": "Free F0 (Good for testing)",
+            "toolTip": "Choose the Cognitive Services Speech pricing tier for voice processing",
+            "constraints": {
+              "required": true,
+              "allowedValues": [
+                {
+                  "label": "Free F0 (Good for testing)",
+                  "value": "F0"
+                },
+                {
+                  "label": "Standard S0 (Pay-as-you-go for production)",
+                  "value": "S0"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "name": "optionalConfig",
+        "label": "Optional Configuration",
+        "elements": [
+          {
+            "name": "configurationNote",
+            "type": "Microsoft.Common.InfoBox",
+            "options": {
+              "icon": "Info",
+              "text": "The following settings are optional and can be configured after deployment using the provided PowerShell scripts."
+            }
+          },
+          {
+            "name": "agentPhoneNumber",
+            "type": "Microsoft.Common.TextBox",
+            "label": "Agent Phone Number (Optional)",
+            "placeholder": "+1234567890",
+            "toolTip": "Enter here if you already have a direct routing phone number in E.164 format (e.g., +1234567890). If you plan to purchase a number directly from Microsoft, leave empty and configure later using setup-configuration.ps1",
+            "constraints": {
+              "required": false,
+              "regex": "^(\\+[1-9]\\d{1,14})?$",
+              "validationMessage": "Phone number must be in E.164 format (e.g., +1234567890) or leave empty to configure later."
+            }
+          },
+          {
+            "name": "directLineSecret",
+            "type": "Microsoft.Common.PasswordBox",
+            "label": {
+              "password": "DirectLine Secret (Optional)",
+              "confirmPassword": "Confirm DirectLine Secret"
+            },
+            "toolTip": "DirectLine secret from Bot Framework. Can be configured later using setup-configuration.ps1",
+            "constraints": {
+              "required": false
+            },
+            "options": {
+              "hideConfirmation": false
+            }
+          },
+          {
+            "name": "keyVaultAccessInfo",
+            "type": "Microsoft.Common.InfoBox",
+            "options": {
+              "icon": "Warning",
+              "text": "⚠️ IMPORTANT: To view/modify Key Vault secrets after deployment, you must provide your Microsoft Entra ID Object ID below. Without this, you'll get 'unauthorized' errors when trying to access secrets."
+            }
+          },
+          {
+            "name": "getObjectIdInfo",
+            "type": "Microsoft.Common.InfoBox",
+            "options": {
+              "icon": "Info",
+              "text": "💡 How to get your Object ID: 1) Azure Portal → Microsoft Entra ID → Manage → Users → Search for your name → Copy Object ID, OR 2) Azure CLI: az ad signed-in-user show --query objectId -o tsv"
+            }
+          },
+          {
+            "name": "userObjectId",
+            "type": "Microsoft.Common.TextBox",
+            "label": "Your Microsoft Entra ID Object ID (Required for Key Vault Access)",
+            "placeholder": "12345678-1234-1234-1234-123456789abc",
+            "toolTip": "REQUIRED for Key Vault access. Get your Object ID: 1) Azure Portal > Microsoft Entra ID > Manage > Users > [Your User] > Object ID, OR 2) Run: az ad signed-in-user show --query objectId -o tsv",
+            "constraints": {
+              "required": true,
+              "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+              "validationMessage": "Must be a valid GUID format (e.g., 12345678-1234-1234-1234-123456789abc). This is required to access Key Vault secrets."
+            }
+          },
+          {
+            "name": "postDeploymentNote",
+            "type": "Microsoft.Common.InfoBox",
+            "options": {
+              "icon": "Info",
+              "text": "After deployment: 1) Get a phone number from your Communication Services resource, 2) Configure the Event Grid system topic, 3) Download the latest release package from GitHub and use the included PowerShell scripts to complete configuration and deploy your application code."
+            }
+          }
+        ]
+      }
+    ],
+    "outputs": {
+      "projectName": "[basics('projectName')]",
+      "environment": "[basics('environment')]",
+      "location": "[location()]",
+      "appServicePlanSku": "[steps('appServiceConfig').appServicePlanSku]",
+      "communicationServicesSku": "[steps('azureServicesConfig').communicationServicesSku]",
+      "cognitiveServicesSku": "[steps('azureServicesConfig').cognitiveServicesSku]",
+      "enableApplicationInsights": "[steps('appServiceConfig').enableApplicationInsights]",
+      "enableBackup": "[steps('appServiceConfig').enableBackup]",
+      "agentPhoneNumber": "[steps('optionalConfig').agentPhoneNumber]",
+      "directLineSecret": "[steps('optionalConfig').directLineSecret]",
+      "userObjectId": "[steps('optionalConfig').userObjectId]",
+      "resourceSuffix": "[basics('resourceSuffix')]"
+    }
+  }
+}

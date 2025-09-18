@@ -27,7 +27,35 @@ https://github.com/user-attachments/assets/c3f3c304-f743-4eb3-9f28-dd22338489c1
 
 ## Quick Start Deployment
 
-### New Projects (Automated Setup)
+### Essential Requirements (local machine)
+- PowerShell 7.0 or Later   
+Download from: https://github.com/PowerShell/PowerShell/releases
+
+- Azure CLI   
+Must be installed and authenticated
+Install from: https://docs.microsoft.com/en-us/cli/azure/install-azure-cli   
+Must run az login before using scripts
+
+- Azure Permissions   
+Contributor or Owner role on the Azure subscription/resource group   
+Key Vault access permissions (get, list, set secrets)   
+Web App deployment permissions   
+
+### Option 1: One-Click Azure Deployment (Recommended)
+Deploy everything with an interactive Azure Portal interface:
+
+[![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Fholgerimbery%2FACSforMCS%2Fmain%2Fazuredeploy.json/createUIDefinitionUri/https%3A%2F%2Fraw.githubusercontent.com%2Fholgerimbery%2FACSforMCS%2Fmain%2FcreateUiDefinition.json)
+
+**Post-deployment steps:**
+1. **Configure additional components** (see [Wiki](https://github.com/holgerimbery/ACSforMCS/wiki) for detailed guides):
+   - [Phone number configuration and setup](https://github.com/holgerimbery/ACSforMCS/wiki/Prerequisites-and-Setup#3-azure-communication-services-acs)
+   - [Copilot Studio agent configuration](https://github.com/holgerimbery/ACSforMCS/wiki/Prerequisites-and-Setup#5-microsoft-copilot-studio)
+   - [Complete deployment and environment management](https://github.com/holgerimbery/ACSforMCS/wiki/Azure-Web-App-Deployment)
+2. Download the latest [release package](https://github.com/holgerimbery/ACSforMCS/releases)
+3. Extract and run `.\setup-configuration.ps1` to configure phone number and DirectLine secret
+4. Run `.\deploy-application.ps1` to deploy your application code
+
+### Option 2: New Projects (Automated Setup)
 For new projects without existing Azure resources, use our automated setup:
 
 ```powershell
@@ -42,19 +70,28 @@ For new projects without existing Azure resources, use our automated setup:
 .\scripts\deploy-application.ps1
 ```
 
-### Existing Azure Resources
+### Option 3: Existing Azure Resources
 If you already have Azure resources configured:
 
-```powershell
-# 1. Download and extract the latest release package
-# 2. Configure application with existing resources
-.\scripts\setup-configuration.ps1 -KeyVaultName "your-keyvault-name"
+- Download the latest [release package](https://github.com/holgerimbery/ACSforMCS/releases)
 
-# 3. Deploy the application
+- **Configure additional components** (see [Wiki](https://github.com/holgerimbery/ACSforMCS/wiki) for detailed guides):
+   - [Phone number configuration and setup](https://github.com/holgerimbery/ACSforMCS/wiki/Prerequisites-and-Setup#3-azure-communication-services-acs)
+   - [Copilot Studio agent configuration](https://github.com/holgerimbery/ACSforMCS/wiki/Prerequisites-and-Setup#5-microsoft-copilot-studio)
+   - [Complete deployment and environment management](https://github.com/holgerimbery/ACSforMCS/wiki/Azure-Web-App-Deployment)
+
+```powershell
+# Configure application with existing resources
+.\scripts\setup-configuration.ps1 -KeyVaultName "your-keyvault-name"
+```
+
+
+```powershell
+# Deploy the application
 .\scripts\deploy-application.ps1
 ```
 
-**📋 Complete deployment guides:**
+** Complete deployment guides:**
 - **[Release Package Quick Reference](https://github.com/holgerimbery/ACSforMCS/wiki/Release-Package-Quick-Reference)** - Step-by-step commands for fast deployment
 - **[Release Package Deployment Guide](https://github.com/holgerimbery/ACSforMCS/wiki/Release-Package-Deployment)** - Comprehensive guide with detailed explanations
 
