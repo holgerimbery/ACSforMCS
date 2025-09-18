@@ -25,7 +25,7 @@
         "label": "Project Name",
         "placeholder": "agentvoice",
         "defaultValue": "agentvoice",
-        "toolTip": "Base name for all resources (3-15 characters, lowercase letters and numbers only). A random 6-character alphanumeric suffix will be automatically added to ensure global uniqueness - no need to make this name unique yourself.",
+        "toolTip": "Base name for all resources (3-15 characters, lowercase letters and numbers only). A random 6-character suffix will be automatically added to ensure global uniqueness - no need to make this name unique yourself. Create your resource group with naming convention 'rg-{projectName}{suffix}-{environment}'.",
         "constraints": {
           "required": true,
           "regex": "^[a-z0-9]{3,15}$",

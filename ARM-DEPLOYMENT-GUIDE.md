@@ -33,6 +33,7 @@ The deployment creates these Azure resources with consistent naming:
 
 | Resource Type | Example Name | Purpose |
 |---------------|--------------|---------|
+| Resource Group | `rg-agentvoicea1b2c3-prod` | Container for all resources |
 | App Service Plan | `asp-agentvoicea1b2c3-prod` | Hosts your application |
 | App Service | `app-agentvoicea1b2c3-prod` | Your ACS for MCS application |
 | Key Vault | `kv-agentvoicea1b2c3-prod` | Stores configuration secrets |

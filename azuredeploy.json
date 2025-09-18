@@ -4,7 +4,7 @@
   "metadata": {
     "title": "ACS for Microsoft Copilot Studio - Complete Deployment",
     "description": "Deploy Azure Communication Services for Microsoft Copilot Studio with all required resources including App Service, Key Vault, and Communication Services. This template creates a complete environment ready for Copilot Studio integration.",
-    "author": "ACS for MCS Team",
+    "author": "Holger Imbery",
     "github": "https://github.com/holgerimbery/ACSforMCS"
   },
   "parameters": {
@@ -14,7 +14,7 @@
       "minLength": 3,
       "maxLength": 15,
       "metadata": {
-        "description": "Base name for all resources. A random 6-character alphanumeric suffix will be automatically added to ensure global uniqueness (e.g., 'agentvoice' becomes 'app-agentvoicea1b2c3-prod'). Use lowercase letters and numbers only."
+        "description": "Base name for all resources. A random 6-character suffix will be added (e.g., 'agentvoice' becomes 'app-agentvoicea1b2c3-prod'). Create your resource group with naming convention 'rg-{projectName}{suffix}-{environment}'. Use lowercase letters and numbers only."
       }
     },
     "environment": {
@@ -155,13 +155,14 @@
   },
   "variables": {
     "uniqueSuffix": "[toLower(substring(uniqueString(resourceGroup().id, deployment().name), 0, 6))]",
-    "appServicePlanName": "[format('asp-{0}{1}-{2}', parameters('projectName'), variables('uniqueSuffix'), parameters('environment'))]",
-    "webAppName": "[format('app-{0}{1}-{2}', parameters('projectName'), variables('uniqueSuffix'), parameters('environment'))]",
-    "keyVaultName": "[format('kv-{0}{1}-{2}', parameters('projectName'), variables('uniqueSuffix'), parameters('environment'))]",
-    "communicationServicesName": "[format('acs-{0}{1}-{2}', parameters('projectName'), variables('uniqueSuffix'), parameters('environment'))]",
-    "cognitiveServicesName": "[format('cs-{0}{1}-{2}', parameters('projectName'), variables('uniqueSuffix'), parameters('environment'))]",
-    "applicationInsightsName": "[format('ai-{0}{1}-{2}', parameters('projectName'), variables('uniqueSuffix'), parameters('environment'))]",
-    "logAnalyticsWorkspaceName": "[format('law-{0}{1}-{2}', parameters('projectName'), variables('uniqueSuffix'), parameters('environment'))]",
+    "extendedProjectName": "[concat(parameters('projectName'), variables('uniqueSuffix'))]",
+    "appServicePlanName": "[format('asp-{0}-{1}', variables('extendedProjectName'), parameters('environment'))]",
+    "webAppName": "[format('app-{0}-{1}', variables('extendedProjectName'), parameters('environment'))]",
+    "keyVaultName": "[format('kv-{0}-{1}', variables('extendedProjectName'), parameters('environment'))]",
+    "communicationServicesName": "[format('acs-{0}-{1}', variables('extendedProjectName'), parameters('environment'))]",
+    "cognitiveServicesName": "[format('cs-{0}-{1}', variables('extendedProjectName'), parameters('environment'))]",
+    "applicationInsightsName": "[format('ai-{0}-{1}', variables('extendedProjectName'), parameters('environment'))]",
+    "logAnalyticsWorkspaceName": "[format('law-{0}-{1}', variables('extendedProjectName'), parameters('environment'))]",
     "baseUriSecret": "[if(equals(parameters('environment'), 'prod'), 'BaseUri-Production', 'BaseUri-Development')]"
   },
   "resources": [
@@ -416,6 +417,14 @@
     }
   ],
   "outputs": {
+    "resourceGroupName": {
+      "type": "string",
+      "value": "[resourceGroup().name]"
+    },
+    "suggestedResourceGroupName": {
+      "type": "string",
+      "value": "[format('rg-{0}-{1}', variables('extendedProjectName'), parameters('environment'))]"
+    },
     "webAppName": {
       "type": "string",
       "value": "[variables('webAppName')]"
@@ -444,13 +453,15 @@
       "type": "string",
       "value": "Deployment complete! Next steps: 1) Download the latest release package from GitHub, 2) Run setup-configuration.ps1 to configure remaining secrets, 3) Deploy your application code using deploy-application.ps1"
     },
-    "scriptsNeeded": {
-      "type": "array",
-      "value": [
-        "setup-configuration.ps1 - Configure phone number and DirectLine secret",
-        "deploy-application.ps1 - Deploy the application code",
-        "show-environment.ps1 - View current configuration"
-      ]
+    "namingConvention": {
+      "type": "object",
+      "value": {
+        "resourceGroup": "[format('rg-{0}-{1}', variables('extendedProjectName'), parameters('environment'))]",
+        "appService": "[variables('webAppName')]",
+        "keyVault": "[variables('keyVaultName')]",
+        "communicationServices": "[variables('communicationServicesName')]",
+        "cognitiveServices": "[variables('cognitiveServicesName')]"
+      }
     }
   }
 }
