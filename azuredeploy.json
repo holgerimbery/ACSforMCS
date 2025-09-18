@@ -126,11 +126,11 @@
     },
     "resourceSuffix": {
       "type": "string",
-      "defaultValue": "",
-      "minLength": 0,
+      "defaultValue": "[toLower(substring(uniqueString(subscription().subscriptionId), 0, 6))]",
+      "minLength": 6,
       "maxLength": 6,
       "metadata": {
-        "description": "Optional 6-character suffix for resource names. Leave empty to auto-generate random suffix. Use lowercase letters and numbers only."
+        "description": "6-character suffix for resource names. Auto-generated random value that can be customized."
       }
     },
     "enableApplicationInsights": {
@@ -170,9 +170,7 @@
     }
   },
   "variables": {
-    "randomSuffix": "[toLower(substring(uniqueString(resourceGroup().id, deployment().name), 0, 6))]",
-    "actualSuffix": "[if(empty(parameters('resourceSuffix')), variables('randomSuffix'), toLower(parameters('resourceSuffix')))]",
-    "extendedProjectName": "[concat(parameters('projectName'), variables('actualSuffix'))]",
+    "extendedProjectName": "[concat(parameters('projectName'), toLower(parameters('resourceSuffix')))]",
     "appServicePlanName": "[format('asp-{0}-{1}', variables('extendedProjectName'), parameters('environment'))]",
     "webAppName": "[format('app-{0}-{1}', variables('extendedProjectName'), parameters('environment'))]",
     "keyVaultName": "[format('kv-{0}-{1}', variables('extendedProjectName'), parameters('environment'))]",
@@ -462,13 +460,9 @@
       "type": "string",
       "value": "[format('rg-{0}-{1}', variables('extendedProjectName'), parameters('environment'))]"
     },
-    "actualSuffixUsed": {
+    "suffixUsed": {
       "type": "string",
-      "value": "[variables('actualSuffix')]"
-    },
-    "suffixSource": {
-      "type": "string",
-      "value": "[if(empty(parameters('resourceSuffix')), 'Auto-generated random suffix', 'User-provided suffix')]"
+      "value": "[parameters('resourceSuffix')]"
     },
     "resourceGroupNamingNote": {
       "type": "string",
