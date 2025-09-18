@@ -60,14 +60,18 @@ cd C:\path\to\extracted\folder
 # Configure phone number and DirectLine secret
 .\setup-configuration.ps1
 ```
+### 3. Aquire Phone Number and configure Event Grid System Topic
+For complete setup, follow these detailed guides in the [Wiki](https://github.com/holgerimbery/ACSforMCS/wiki):   
+- **[Phone Number Acquisition and Setup](https://github.com/holgerimbery/ACSforMCS/wiki/Prerequisites-and-Setup#3-azure-communication-services-acs)** - How to order and configure phone numbers
+- **[Copilot Studio Configuration](https://github.com/holgerimbery/ACSforMCS/wiki/Prerequisites-and-Setup#5-microsoft-copilot-studio)** - Configure agents for call handling
 
-### 3. Deploy Application Code
+### 4. Deploy Application Code
 ```powershell
 # Deploy the application to your new resources
 .\deploy-application.ps1
 ```
 
-### 4. Verify Deployment
+### 5. Verify Deployment
 ```powershell
 # Check configuration and test endpoints
 .\show-environment.ps1
@@ -75,8 +79,6 @@ cd C:\path\to\extracted\folder
 
 ### 5. Configure Additional Components
 For complete setup, follow these detailed guides in the [Wiki](https://github.com/holgerimbery/ACSforMCS/wiki):
-- **[Phone Number Acquisition and Setup](https://github.com/holgerimbery/ACSforMCS/wiki/Prerequisites-and-Setup#3-azure-communication-services-acs)** - How to order and configure phone numbers
-- **[Copilot Studio Configuration](https://github.com/holgerimbery/ACSforMCS/wiki/Prerequisites-and-Setup#5-microsoft-copilot-studio)** - Configure agents for call handling
 - **[Azure Web App Deployment](https://github.com/holgerimbery/ACSforMCS/wiki/Azure-Web-App-Deployment)** - Complete deployment guide
 - **[Environment Management Scripts](https://github.com/holgerimbery/ACSforMCS/wiki/Environment-Management-Scripts)** - Automation and scripting
 
