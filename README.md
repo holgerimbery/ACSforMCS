@@ -91,7 +91,7 @@ If you already have Azure resources configured:
 .\scripts\deploy-application.ps1
 ```
 
-**📋 Complete deployment guides:**
+** Complete deployment guides:**
 - **[Release Package Quick Reference](https://github.com/holgerimbery/ACSforMCS/wiki/Release-Package-Quick-Reference)** - Step-by-step commands for fast deployment
 - **[Release Package Deployment Guide](https://github.com/holgerimbery/ACSforMCS/wiki/Release-Package-Deployment)** - Comprehensive guide with detailed explanations
 
