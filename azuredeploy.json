@@ -288,19 +288,7 @@
                 "list"
               ]
             }
-          }
-        ]
-      }
-    },
-    {
-      "type": "Microsoft.KeyVault/vaults/accessPolicies",
-      "apiVersion": "2023-07-01",
-      "name": "[format('{0}/add-user', variables('keyVaultName'))]",
-      "dependsOn": [
-        "[resourceId('Microsoft.KeyVault/vaults/accessPolicies', variables('keyVaultName'), 'add')]"
-      ],
-      "properties": {
-        "accessPolicies": [
+          },
           {
             "tenantId": "[subscription().tenantId]",
             "objectId": "[parameters('userObjectId')]",

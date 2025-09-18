@@ -286,7 +286,7 @@
             "type": "Microsoft.Common.InfoBox",
             "options": {
               "icon": "Info",
-              "text": "💡 How to get your Object ID: 1) Azure Portal → Microsoft Entra ID → Users → Search for your name → Copy Object ID, OR 2) Azure CLI: az ad signed-in-user show --query objectId -o tsv"
+              "text": "💡 How to get your Object ID: 1) Azure Portal → Microsoft Entra ID → Manage → Users → Search for your name → Copy Object ID, OR 2) Azure CLI: az ad signed-in-user show --query objectId -o tsv"
             }
           },
           {
@@ -294,7 +294,7 @@
             "type": "Microsoft.Common.TextBox",
             "label": "Your Microsoft Entra ID Object ID (Required for Key Vault Access)",
             "placeholder": "12345678-1234-1234-1234-123456789abc",
-            "toolTip": "REQUIRED for Key Vault access. Get your Object ID: 1) Azure Portal > Microsoft Entra ID > Users > [Your User] > Object ID, OR 2) Run: az ad signed-in-user show --query objectId -o tsv",
+            "toolTip": "REQUIRED for Key Vault access. Get your Object ID: 1) Azure Portal > Microsoft Entra ID > Manage > Users > [Your User] > Object ID, OR 2) Run: az ad signed-in-user show --query objectId -o tsv",
             "constraints": {
               "required": true,
               "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
