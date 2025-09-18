@@ -117,6 +117,13 @@
         "description": "Cognitive Services pricing tier for Speech Services. F0=Free tier (limited usage), S0=Standard tier (pay-as-you-go)"
       }
     },
+    "userObjectId": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Your Azure AD Object ID for Key Vault access. Leave empty to auto-detect from deployment context. Get your Object ID from: Azure Portal > Azure Active Directory > Users > [Your User] > Object ID"
+      }
+    },
     "enableApplicationInsights": {
       "type": "bool",
       "defaultValue": true,
@@ -271,6 +278,19 @@
               "secrets": [
                 "get",
                 "list"
+              ]
+            }
+          },
+          {
+            "condition": "[not(empty(parameters('userObjectId')))]",
+            "tenantId": "[subscription().tenantId]",
+            "objectId": "[if(empty(parameters('userObjectId')), guid(subscription().subscriptionId, resourceGroup().id), parameters('userObjectId'))]",
+            "permissions": {
+              "secrets": [
+                "get",
+                "list",
+                "set",
+                "delete"
               ]
             }
           }

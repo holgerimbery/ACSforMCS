@@ -245,6 +245,18 @@
             }
           },
           {
+            "name": "userObjectId",
+            "type": "Microsoft.Common.TextBox",
+            "label": "Your Azure AD Object ID (Optional)",
+            "placeholder": "12345678-1234-1234-1234-123456789abc",
+            "toolTip": "Your Azure AD Object ID for Key Vault access. Get this from: Azure Portal > Azure Active Directory > Users > [Your User] > Object ID. Leave empty if you're not sure - you can add access later.",
+            "constraints": {
+              "required": false,
+              "regex": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})?$",
+              "validationMessage": "Must be a valid GUID format (e.g., 12345678-1234-1234-1234-123456789abc) or leave empty."
+            }
+          },
+          {
             "name": "postDeploymentNote",
             "type": "Microsoft.Common.InfoBox",
             "options": {
@@ -265,7 +277,8 @@
       "enableApplicationInsights": "[steps('appServiceConfig').enableApplicationInsights]",
       "enableBackup": "[steps('appServiceConfig').enableBackup]",
       "agentPhoneNumber": "[steps('optionalConfig').agentPhoneNumber]",
-      "directLineSecret": "[steps('optionalConfig').directLineSecret]"
+      "directLineSecret": "[steps('optionalConfig').directLineSecret]",
+      "userObjectId": "[steps('optionalConfig').userObjectId]"
     }
   }
 }
