@@ -124,6 +124,15 @@
         "description": "Your Azure AD Object ID for Key Vault access. Leave empty to auto-detect from deployment context. Get your Object ID from: Azure Portal > Azure Active Directory > Users > [Your User] > Object ID"
       }
     },
+    "resourceSuffix": {
+      "type": "string",
+      "defaultValue": "",
+      "minLength": 0,
+      "maxLength": 6,
+      "metadata": {
+        "description": "Optional 6-character suffix for resource names. Leave empty to auto-generate random suffix. Use lowercase letters and numbers only."
+      }
+    },
     "enableApplicationInsights": {
       "type": "bool",
       "defaultValue": true,
@@ -161,8 +170,9 @@
     }
   },
   "variables": {
-    "uniqueSuffix": "[toLower(substring(uniqueString(resourceGroup().id, deployment().name), 0, 6))]",
-    "extendedProjectName": "[concat(parameters('projectName'), variables('uniqueSuffix'))]",
+    "randomSuffix": "[toLower(substring(uniqueString(resourceGroup().id, deployment().name), 0, 6))]",
+    "actualSuffix": "[if(empty(parameters('resourceSuffix')), variables('randomSuffix'), toLower(parameters('resourceSuffix')))]",
+    "extendedProjectName": "[concat(parameters('projectName'), variables('actualSuffix'))]",
     "appServicePlanName": "[format('asp-{0}-{1}', variables('extendedProjectName'), parameters('environment'))]",
     "webAppName": "[format('app-{0}-{1}', variables('extendedProjectName'), parameters('environment'))]",
     "keyVaultName": "[format('kv-{0}-{1}', variables('extendedProjectName'), parameters('environment'))]",
@@ -448,9 +458,21 @@
       "type": "string",
       "value": "[resourceGroup().name]"
     },
-    "suggestedResourceGroupName": {
+    "expectedResourceGroupName": {
       "type": "string",
       "value": "[format('rg-{0}-{1}', variables('extendedProjectName'), parameters('environment'))]"
+    },
+    "actualSuffixUsed": {
+      "type": "string",
+      "value": "[variables('actualSuffix')]"
+    },
+    "suffixSource": {
+      "type": "string",
+      "value": "[if(empty(parameters('resourceSuffix')), 'Auto-generated random suffix', 'User-provided suffix')]"
+    },
+    "resourceGroupNamingNote": {
+      "type": "string",
+      "value": "[if(equals(resourceGroup().name, format('rg-{0}-{1}', variables('extendedProjectName'), parameters('environment'))), '✅ Resource group name follows the recommended naming convention', '⚠️ Resource group name differs from recommended convention')]"
     },
     "webAppName": {
       "type": "string",

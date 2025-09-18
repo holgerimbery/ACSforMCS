@@ -6,6 +6,16 @@ This ARM template provides a one-click deployment solution for ACS for Microsoft
 
 [![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Fholgerimbery%2FACSforMCS%2Fdeplyonazurebutton%2Fazuredeploy.json/createUIDefinitionUri/https%3A%2F%2Fraw.githubusercontent.com%2Fholgerimbery%2FACSforMCS%2Fdeplyonazurebutton%2FcreateUiDefinition.json)
 
+**⚠️ Important**: Before clicking "Deploy to Azure", you need to create a resource group first. The deployment interface will show you the exact resource group name to use based on your project name and environment selection.
+
+### Pre-Deployment Steps
+1. **Create Resource Group**: Use the naming convention `rg-{projectName}{6-chars}-{environment}`
+   - Example: `rg-agentvoicea1b2c3-prod`
+   - The deployment form will show you the exact name after you enter your project details
+2. **Get your Azure AD Object ID** (optional but recommended for Key Vault access)
+   - Azure Portal → Azure Active Directory → Users → [Your User] → Object ID
+   - Or run: `az ad signed-in-user show --query objectId -o tsv`
+
 ## What This Template Deploys
 
 This ARM template creates a complete ACS for MCS environment including:

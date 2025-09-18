@@ -5,7 +5,7 @@
   "parameters": {
     "config": {
       "basics": {
-        "description": "Deploy Azure Communication Services for Microsoft Copilot Studio with all required resources. This template creates a complete, production-ready environment for voice call automation using Azure Communication Services and Microsoft Copilot Studio integration.",
+        "description": "Deploy Azure Communication Services for Microsoft Copilot Studio with all required resources. **IMPORTANT**: Before deployment, create a resource group with this naming convention: `rg-{projectName}{6-chars}-{environment}` (e.g., `rg-agentvoicea1b2c3-prod`). The deployment will show you the exact name to use.",
         "location": {
           "label": "Region",
           "toolTip": "Select the Azure region where your resources will be deployed. Choose a region close to your users for best performance.",
@@ -20,12 +20,20 @@
     },
     "basics": [
       {
+        "name": "resourceGroupInfo",
+        "type": "Microsoft.Common.InfoBox",
+        "options": {
+          "icon": "Info",
+          "text": "STEP 1: Create a resource group using the exact name shown below. You can either provide your own 6-character suffix or leave it empty for auto-generated random suffix."
+        }
+      },
+      {
         "name": "projectName",
         "type": "Microsoft.Common.TextBox",
         "label": "Project Name",
         "placeholder": "agentvoice",
         "defaultValue": "agentvoice",
-        "toolTip": "Base name for all resources (3-15 characters, lowercase letters and numbers only). A random 6-character suffix will be automatically added to ensure global uniqueness - no need to make this name unique yourself. Create your resource group with naming convention 'rg-{projectName}{suffix}-{environment}'.",
+        "toolTip": "Base name for all resources (3-15 characters, lowercase letters and numbers only). A suffix will be added to ensure global uniqueness. You can specify your own suffix below or leave it empty for auto-generation.",
         "constraints": {
           "required": true,
           "regex": "^[a-z0-9]{3,15}$",
@@ -59,6 +67,27 @@
               "value": "prod"
             }
           ]
+        }
+      },
+      {
+        "name": "resourceSuffix",
+        "type": "Microsoft.Common.TextBox",
+        "label": "Resource Suffix (Optional)",
+        "placeholder": "abc123",
+        "defaultValue": "",
+        "toolTip": "Optional 6-character suffix for predictable resource naming (e.g., 'abc123'). Leave empty for auto-generated random suffix. Use lowercase letters and numbers only.",
+        "constraints": {
+          "required": false,
+          "regex": "^[a-z0-9]{0,6}$",
+          "validationMessage": "Must be 0-6 characters using lowercase letters and numbers only."
+        }
+      },
+      {
+        "name": "resourceGroupName",
+        "type": "Microsoft.Common.InfoBox",
+        "options": {
+          "icon": "Info",
+          "text": "[if(empty(basics('resourceSuffix')), concat('✅ Resource Group Name: rg-', basics('projectName'), 'XXXXXX-', basics('environment'), ' (XXXXXX = auto-generated)'), concat('✅ Resource Group Name: rg-', basics('projectName'), basics('resourceSuffix'), '-', basics('environment')))]"
         }
       }
     ],
@@ -278,7 +307,8 @@
       "enableBackup": "[steps('appServiceConfig').enableBackup]",
       "agentPhoneNumber": "[steps('optionalConfig').agentPhoneNumber]",
       "directLineSecret": "[steps('optionalConfig').directLineSecret]",
-      "userObjectId": "[steps('optionalConfig').userObjectId]"
+      "userObjectId": "[steps('optionalConfig').userObjectId]",
+      "resourceSuffix": "[basics('resourceSuffix')]"
     }
   }
 }
