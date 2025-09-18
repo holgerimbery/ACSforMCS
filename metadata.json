@@ -1,0 +1,14 @@
+{
+  "itemDisplayName": "ACS for Microsoft Copilot Studio - Complete Deployment",
+  "description": "Deploy Azure Communication Services for Microsoft Copilot Studio with all required resources including App Service, Key Vault, Communication Services, and Speech Services. This template creates a complete, production-ready environment for voice call automation using Azure Communication Services and Microsoft Copilot Studio integration.",
+  "summary": "One-click deployment of a complete ACS for MCS environment with interactive configuration options for naming, SKU selection, and optional settings.",
+  "githubUsername": "holgerimbery",
+  "dateUpdated": "2025-09-18",
+  "type": "QuickStart",
+  "tags": {
+    "subscriptiontype": "Azure 4 Students, Free, MSDN, Azure Pass, Azure in Open, Pay-As-You-Go",
+    "resource": "App Service, Key Vault, Communication Services, Cognitive Services, Application Insights",
+    "level": "Beginner",
+    "cost": "$$"
+  }
+}

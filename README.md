@@ -27,7 +27,17 @@ https://github.com/user-attachments/assets/c3f3c304-f743-4eb3-9f28-dd22338489c1
 
 ## Quick Start Deployment
 
-### New Projects (Automated Setup)
+### Option 1: One-Click Azure Deployment (Recommended)
+Deploy everything with an interactive Azure Portal interface:
+
+[![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Fholgerimbery%2FACSforMCS%2Fdeplyonazurebutton%2Fazuredeploy.json/createUIDefinitionUri/https%3A%2F%2Fraw.githubusercontent.com%2Fholgerimbery%2FACSforMCS%2Fdeplyonazurebutton%2FcreateUiDefinition.json)
+
+**Post-deployment steps:**
+1. Download the latest [release package](https://github.com/holgerimbery/ACSforMCS/releases)
+2. Extract and run `.\setup-configuration.ps1` to configure phone number and DirectLine secret
+3. Run `.\deploy-application.ps1` to deploy your application code
+
+### Option 2: New Projects (Automated Setup)
 For new projects without existing Azure resources, use our automated setup:
 
 ```powershell
@@ -42,7 +52,7 @@ For new projects without existing Azure resources, use our automated setup:
 .\scripts\deploy-application.ps1
 ```
 
-### Existing Azure Resources
+### Option 3: Existing Azure Resources
 If you already have Azure resources configured:
 
 ```powershell

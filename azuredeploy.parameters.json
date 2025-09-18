@@ -1,0 +1,36 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "projectName": {
+      "value": "acsformcs"
+    },
+    "environment": {
+      "value": "prod"
+    },
+    "location": {
+      "value": "eastus"
+    },
+    "appServicePlanSku": {
+      "value": "B1"
+    },
+    "communicationServicesSku": {
+      "value": "F0"
+    },
+    "cognitiveServicesSku": {
+      "value": "F0"
+    },
+    "enableApplicationInsights": {
+      "value": true
+    },
+    "enableBackup": {
+      "value": false
+    },
+    "agentPhoneNumber": {
+      "value": ""
+    },
+    "directLineSecret": {
+      "value": ""
+    }
+  }
+}
