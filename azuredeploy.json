@@ -121,7 +121,7 @@
       "type": "string",
       "defaultValue": "",
       "metadata": {
-        "description": "Your Azure AD Object ID for Key Vault access. Leave empty to auto-detect from deployment context. Get your Object ID from: Azure Portal > Azure Active Directory > Users > [Your User] > Object ID"
+        "description": "REQUIRED for Key Vault access: Your Microsoft Entra ID Object ID. Get it from: Azure Portal > Microsoft Entra ID > Users > [Your User] > Object ID, or run: az ad signed-in-user show --query objectId -o tsv"
       }
     },
     "resourceSuffix": {
@@ -288,11 +288,22 @@
                 "list"
               ]
             }
-          },
+          }
+        ]
+      }
+    },
+    {
+      "type": "Microsoft.KeyVault/vaults/accessPolicies",
+      "apiVersion": "2023-07-01",
+      "name": "[format('{0}/add-user', variables('keyVaultName'))]",
+      "dependsOn": [
+        "[resourceId('Microsoft.KeyVault/vaults/accessPolicies', variables('keyVaultName'), 'add')]"
+      ],
+      "properties": {
+        "accessPolicies": [
           {
-            "condition": "[not(empty(parameters('userObjectId')))]",
             "tenantId": "[subscription().tenantId]",
-            "objectId": "[if(empty(parameters('userObjectId')), guid(subscription().subscriptionId, resourceGroup().id), parameters('userObjectId'))]",
+            "objectId": "[parameters('userObjectId')]",
             "permissions": {
               "secrets": [
                 "get",

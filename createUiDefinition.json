@@ -274,15 +274,31 @@
             }
           },
           {
+            "name": "keyVaultAccessInfo",
+            "type": "Microsoft.Common.InfoBox",
+            "options": {
+              "icon": "Warning",
+              "text": "⚠️ IMPORTANT: To view/modify Key Vault secrets after deployment, you must provide your Microsoft Entra ID Object ID below. Without this, you'll get 'unauthorized' errors when trying to access secrets."
+            }
+          },
+          {
+            "name": "getObjectIdInfo",
+            "type": "Microsoft.Common.InfoBox",
+            "options": {
+              "icon": "Info",
+              "text": "💡 How to get your Object ID: 1) Azure Portal → Microsoft Entra ID → Users → Search for your name → Copy Object ID, OR 2) Azure CLI: az ad signed-in-user show --query objectId -o tsv"
+            }
+          },
+          {
             "name": "userObjectId",
             "type": "Microsoft.Common.TextBox",
-            "label": "Your Azure AD Object ID (Optional)",
+            "label": "Your Microsoft Entra ID Object ID (Required for Key Vault Access)",
             "placeholder": "12345678-1234-1234-1234-123456789abc",
-            "toolTip": "Your Azure AD Object ID for Key Vault access. Get this from: Azure Portal > Azure Active Directory > Users > [Your User] > Object ID. Leave empty if you're not sure - you can add access later.",
+            "toolTip": "REQUIRED for Key Vault access. Get your Object ID: 1) Azure Portal > Microsoft Entra ID > Users > [Your User] > Object ID, OR 2) Run: az ad signed-in-user show --query objectId -o tsv",
             "constraints": {
-              "required": false,
-              "regex": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})?$",
-              "validationMessage": "Must be a valid GUID format (e.g., 12345678-1234-1234-1234-123456789abc) or leave empty."
+              "required": true,
+              "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+              "validationMessage": "Must be a valid GUID format (e.g., 12345678-1234-1234-1234-123456789abc). This is required to access Key Vault secrets."
             }
           },
           {
