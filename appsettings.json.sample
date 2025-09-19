@@ -39,6 +39,17 @@
     // Must match the language of the selected voice
     // Format: language-region (e.g., "en-US", "es-ES", "fr-FR", "de-DE")
     "Language": "en-US"
+  },
+  
+  // Caller identification and personalization configuration
+  // Controls how caller ID and callee ID information is processed and used
+  "CallerId": {
+    // Enable/disable caller ID extraction and personalization features
+    // Set to false to treat all calls as anonymous
+    "EnableCallerIdProcessing": true,
+    
+    // Enable detailed logging of caller ID extraction results
+    "EnableDetailedLogging": true
   }
 }
 
