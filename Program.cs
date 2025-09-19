@@ -52,6 +52,7 @@ else
 // This binds JSON configuration sections to strongly-typed classes
 builder.Services.Configure<AppSettings>(builder.Configuration);
 builder.Services.Configure<VoiceOptions>(builder.Configuration.GetSection("Voice"));
+builder.Services.Configure<CallerIdOptions>(builder.Configuration.GetSection("CallerId"));
 
 // Add standard ASP.NET Core services
 builder.Services.AddControllers(); // Enable MVC controllers for API endpoints
@@ -446,6 +447,20 @@ app.MapPost("/api/incomingCall", async (
 
             logger.LogInformation("Processing call with context: {IncomingCallContext}", incomingCallContext);
 
+            // Extract caller and callee information from the event data with configuration-driven behavior
+            var callerIdOptions = app.Services.GetRequiredService<IOptions<CallerIdOptions>>().Value;
+            var tempCorrelationId = Guid.NewGuid().ToString("N")[^8..]; // Temporary ID for extraction
+            
+            var callerInfo = callerIdOptions.EnableCallerIdProcessing 
+                ? CallerInfoExtractor.ExtractCallerInfo(eventGridEvent, tempCorrelationId, logger)
+                : CallerInfoExtractor.CallerInfo.CreateDefault(tempCorrelationId);
+            
+            if (callerIdOptions.EnableDetailedLogging)
+            {
+                logger.LogInformation("Extracted caller information - Status: {Status}, CallerId: {CallerId}, CalleeId: {CalleeId}, Quality: {Quality}",
+                    callerInfo.Status, callerInfo.CallerId, callerInfo.CalleeId, callerInfo.DataQuality);
+            }
+
             // Generate a unique callback URI for this call's events
             var callbackUri = callAutomationService.GetCallbackUri();
             logger.LogInformation("Generated callback URI: {CallbackUri}", callbackUri);
@@ -482,15 +497,26 @@ app.MapPost("/api/incomingCall", async (
 
             if (correlationId != null)
             {
-                // Create and store call context for tracking this call's state
-                callStore[correlationId] = new CallContext()
+                // Create and store call context for tracking this call's state with caller information
+                var callContext = new CallContext()
                 {
                     CorrelationId = correlationId
                 };
                 
-                // Log concurrent call metrics
-                logger.LogInformation("Call context created - Total active calls: {ActiveCalls}, Correlation ID: {CorrelationId}",
-                    callStore.Count, correlationId);
+                // Apply the extracted caller information to the call context
+                callerInfo.CorrelationId = correlationId; // Update with actual correlation ID
+                callerInfo.ApplyToCallContext(callContext);
+                
+                // Store the call context
+                callStore[correlationId] = callContext;
+                
+                // Log comprehensive call information
+                logger.LogInformation("Call context created - Correlation ID: {CorrelationId}, CallerId: {CallerId}, CalleeId: {CalleeId}, CallerName: {CallerName}, Active calls: {ActiveCalls}",
+                    correlationId, callContext.CallerId, callContext.CalleeId, callContext.CallerDisplayName, callStore.Count);
+                    
+                // Log data quality metrics for monitoring
+                logger.LogInformation("Call data quality: {Quality}, HasCallerInfo: {HasCallerInfo}, HasCalleeInfo: {HasCalleeInfo}, CallerType: {CallerType}",
+                    callContext.GetDataQuality(), callContext.HasCallerInfo, callContext.HasCalleeInfo, callContext.CallerType);
             }
         }
         catch (Exception ex)
@@ -542,68 +568,94 @@ app.MapPost("/api/calls/{contextId}", async (
             try
             {
                 // Log concurrent call monitoring information
-                logger.LogInformation("📞 Call connected - Active calls: {ActiveCallCount}, New call correlation ID: {CorrelationId}", 
+                logger.LogInformation("Call connected - Active calls: {ActiveCallCount}, New call correlation ID: {CorrelationId}", 
                     callStore.Count, correlationId);
                 
                 Conversation? conversation = null;
                 
                 try
                 {
-                    logger.LogInformation("🤖 Starting DirectLine conversation for call {CorrelationId}", correlationId);
+                    logger.LogInformation("Starting DirectLine conversation for call {CorrelationId}", correlationId);
                     
                     // Attempt to start a DirectLine conversation with the bot
                     conversation = await callAutomationService.StartConversationAsync();
                     
-                    logger.LogInformation("✅ DirectLine conversation created successfully: ConversationId={ConversationId}, StreamUrl={HasStreamUrl}", 
+                    logger.LogInformation("DirectLine conversation created successfully: ConversationId={ConversationId}, StreamUrl={HasStreamUrl}", 
                         conversation?.ConversationId, !string.IsNullOrEmpty(conversation?.StreamUrl));
                 }
-                catch (HttpRequestException ex) when (ex.Message.Contains("403"))
+                catch (HttpRequestException ex) when (ex.Message.Contains("403") || ex.Message.Contains("401"))
                 {
                     // If the primary method fails with authentication issues, try the token-based approach
-                    logger.LogWarning("⚠️ Regular StartConversationAsync failed with 403, trying token method for call {CorrelationId}: {Error}", 
-                        correlationId, ex.Message);
+                    logger.LogWarning("Regular StartConversationAsync failed with {StatusCode}, trying token method for call {CorrelationId}: {Error}", 
+                        ex.Message.Contains("403") ? "403" : "401", correlationId, ex.Message);
                     
                     try
                     {
                         conversation = await callAutomationService.StartConversationWithTokenAsync();
-                        logger.LogInformation("✅ Token-based DirectLine conversation created: ConversationId={ConversationId}", 
+                        logger.LogInformation("Token-based DirectLine conversation created: ConversationId={ConversationId}", 
                             conversation?.ConversationId);
                     }
                     catch (Exception tokenEx)
                     {
-                        logger.LogError(tokenEx, "❌ Both DirectLine authentication methods failed for call {CorrelationId}", correlationId);
-                        throw;
+                        logger.LogError(tokenEx, "Both DirectLine authentication methods failed for call {CorrelationId}", correlationId);
+                        
+                        // Continue call without bot - play error message
+                        try
+                        {
+                            await callConnection.GetCallMedia().PlayToAllAsync(
+                                new PlayToAllOptions(new TextSource("I'm sorry, our bot service is temporarily unavailable. Please try again later."))
+                                { OperationContext = "error-fallback" });
+                        }
+                        catch (Exception playEx)
+                        {
+                            logger.LogError(playEx, "Failed to play error message for call {CorrelationId}", correlationId);
+                        }
+                        
+                        // Don't throw - keep call alive but without bot
+                        conversation = null;
                     }
                 }
                 catch (Exception ex)
                 {
-                    logger.LogError(ex, "❌ DirectLine conversation creation failed for call {CorrelationId}: {Error}", correlationId, ex.Message);
-                    throw;
+                    logger.LogError(ex, "DirectLine conversation creation failed for call {CorrelationId}: {Error}", correlationId, ex.Message);
+                    
+                    // Continue call without bot - play error message
+                    try
+                    {
+                        await callConnection.GetCallMedia().PlayToAllAsync(
+                            new PlayToAllOptions(new TextSource("I'm sorry, our service is temporarily unavailable. Please try again later."))
+                            { OperationContext = "error-fallback" });
+                    }
+                    catch (Exception playEx)
+                    {
+                        logger.LogError(playEx, "Failed to play error message for call {CorrelationId}", correlationId);
+                    }
+                    
+                    // Don't throw - keep call alive but without bot
+                    conversation = null;
                 }
                 
-                if (conversation == null || string.IsNullOrEmpty(conversation.ConversationId))
+                // Only proceed with bot integration if conversation was successfully created
+                if (conversation != null && !string.IsNullOrEmpty(conversation.ConversationId))
                 {
-                    logger.LogError("❌ Failed to get valid conversation for call {CorrelationId}: conversation={IsNull}, conversationId={ConversationId}", 
-                        correlationId, conversation == null, conversation?.ConversationId ?? "NULL");
-                    throw new InvalidOperationException("Failed to get valid conversation");
-                }
-                
-                // Associate the bot conversation with this call
-                var conversationId = conversation.ConversationId;
+                    // Associate the bot conversation with this call
+                    var conversationId = conversation.ConversationId;
                 if (callStore.ContainsKey(correlationId))
                 {
                     callStore[correlationId].ConversationId = conversationId;
-                    logger.LogInformation("🔗 Associated conversation {ConversationId} with call {CorrelationId}", conversationId, correlationId);
+                    logger.LogInformation("Associated conversation {ConversationId} with call {CorrelationId}", conversationId, correlationId);
+                    
+                    // Caller information is now sent as part of the initial message above
                 }
                 else
                 {
-                    logger.LogWarning("⚠️ Call {CorrelationId} not found in call store when associating conversation", correlationId);
+                    logger.LogWarning("Call {CorrelationId} not found in call store when associating conversation", correlationId);
                 }
 
                 // Start listening for bot responses asynchronously
                 var cts = new CancellationTokenSource();
                 callAutomationService.RegisterTokenSource(correlationId, cts);
-                logger.LogInformation("📡 Registered token source for call {CorrelationId}, active token sources: {ActiveCount}", 
+                logger.LogInformation("Registered token source for call {CorrelationId}, active token sources: {ActiveCount}", 
                     correlationId, callAutomationService.GetActiveTokenSourceCount());
                 
                 // Parallel optimization: Start WebSocket listener and send greeting simultaneously
@@ -612,11 +664,11 @@ app.MapPost("/api/calls/{contextId}", async (
                 // Validate that we have a WebSocket URL for real-time bot communication
                 if (string.IsNullOrEmpty(conversation.StreamUrl))
                 {
-                    logger.LogError("❌ StreamUrl is null or empty for call {CorrelationId}, cannot listen to bot", correlationId);
+                    logger.LogError("StreamUrl is null or empty for call {CorrelationId}, cannot listen to bot", correlationId);
                 }
                 else
                 {
-                    logger.LogInformation("🔄 Starting bot WebSocket listener for call {CorrelationId}, StreamUrl: {StreamUrl}", 
+                    logger.LogInformation("Starting bot WebSocket listener for call {CorrelationId}, StreamUrl: {StreamUrl}", 
                         correlationId, conversation.StreamUrl);
                     
                     // Start the bot listener immediately (parallel with greeting)
@@ -628,35 +680,44 @@ app.MapPost("/api/calls/{contextId}", async (
                         }
                         catch (Exception ex)
                         {
-                            logger.LogError(ex, "❌ WebSocket listener failed for call {CorrelationId}: {Error}", correlationId, ex.Message);
+                            logger.LogError(ex, "WebSocket listener failed for call {CorrelationId}: {Error}", correlationId, ex.Message);
                         }
                     });
                 }
 
-                // Send initial greeting message to the bot in parallel with WebSocket setup
-                logger.LogInformation("💬 Sending initial greeting to bot for call {CorrelationId}", correlationId);
+                // Send initial greeting message to the bot to trigger conversation flow
+                logger.LogInformation("Sending initial greeting to bot for call {CorrelationId}", correlationId);
                 Task greetingTask = Task.Run(async () =>
                 {
                     try
                     {
-                        await callAutomationService.SendMessageAsync(conversationId, "Hello");
-                        logger.LogInformation("✅ Initial greeting sent successfully for call {CorrelationId}", correlationId);
+                        // Send caller information as the initial message for the bot to parse
+                        var callContext = callStore[correlationId];
+                        var callerMessage = $"CALLER_ID={callContext.CallerId}|CALLEE_ID={callContext.CalleeId}|CALLER_NAME={callContext.CallerDisplayName}";
+                        
+                        await callAutomationService.SendMessageAsync(conversationId, callerMessage);
+                        logger.LogInformation("Initial caller information sent successfully for call {CorrelationId}: {CallerInfo}", correlationId, callerMessage);
                     }
                     catch (Exception ex)
                     {
-                        logger.LogError(ex, "❌ Failed to send initial greeting for call {CorrelationId}: {Error}", correlationId, ex.Message);
+                        logger.LogError(ex, "Failed to send initial greeting for call {CorrelationId}: {Error}", correlationId, ex.Message);
                     }
                 });
 
                 // Wait briefly to ensure both operations are initiated (don't block the webhook response)
                 _ = Task.WhenAll(webSocketTask, greetingTask);
+                }
+                else
+                {
+                    logger.LogWarning("Call {CorrelationId} proceeding without bot conversation - DirectLine connection failed", correlationId);
+                }
             }
             catch (Exception ex)
             {
-                logger.LogError(ex, "❌ CRITICAL: Error processing CallConnected event for call {CorrelationId}: {Message}", correlationId, ex.Message);
+                logger.LogError(ex, "CRITICAL: Error processing CallConnected event for call {CorrelationId}: {Message}", correlationId, ex.Message);
                 
                 // Log additional debugging information
-                logger.LogError("🔍 CallConnected debugging info - Call store count: {CallStoreCount}, Active token sources: {TokenSources}", 
+                logger.LogError("CallConnected debugging info - Call store count: {CallStoreCount}, Active token sources: {TokenSources}", 
                     callStore.Count, callAutomationService.GetActiveTokenSourceCount());
             }
         }

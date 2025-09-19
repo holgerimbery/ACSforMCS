@@ -50,6 +50,27 @@ namespace ACSforMCS.Configuration
     }
 
     /// <summary>
+    /// Configuration options for caller identification and personalization features.
+    /// Controls how caller ID and callee ID information is handled and used throughout the application.
+    /// </summary>
+    public class CallerIdOptions
+    {
+        /// <summary>
+        /// Enables or disables caller ID extraction and personalization features.
+        /// When disabled, all calls are treated as anonymous with generic greetings.
+        /// Default: true
+        /// </summary>
+        public bool EnableCallerIdProcessing { get; set; } = true;
+
+        /// <summary>
+        /// Enables detailed logging of caller ID extraction results for monitoring and debugging.
+        /// When enabled, logs extraction success/failure rates and data quality metrics.
+        /// Default: true
+        /// </summary>
+        public bool EnableDetailedLogging { get; set; } = true;
+    }
+
+    /// <summary>
     /// Configuration options for voice synthesis and speech recognition.
     /// Used to customize the voice characteristics for text-to-speech operations and optimize speech recognition timing.
     /// </summary>
