@@ -151,6 +151,27 @@ Required Key Vault secrets:
 - Supports both Development and Production environments
 - Provides deployment summary and testing information
 
+### 🔧 **fix-keyvault-access.ps1** (Troubleshooting Tool)
+- Emergency troubleshooting tool for Key Vault access issues
+- Fixes Key Vault access policy problems after ARM deployment
+- Adds user permissions to Key Vault secrets (get, list, set, delete)
+- Used when ARM deployment access policies fail or for post-deployment user additions
+- Validates Object ID format and provides clear feedback
+- Includes guided next steps for verification
+
+**Usage:**
+```powershell
+# Get your Object ID and fix Key Vault access
+$objectId = az ad signed-in-user show --query id -o tsv
+.\scripts\fix-keyvault-access.ps1 -KeyVaultName "kv-yourproject-prod" -UserObjectId $objectId
+```
+
+**When to use:**
+- ARM deployment failed to set Key Vault access policies correctly
+- "Unauthorized" errors when accessing Key Vault secrets
+- Need to add additional users to Key Vault access after deployment
+- Emergency access restoration for Key Vault secrets
+
 ## Environment Differences
 
 | Feature | Development | Production |
@@ -188,6 +209,15 @@ az account show
 ```
 
 **Key Vault access denied:**
+```powershell
+# Fix Key Vault access policies
+$objectId = az ad signed-in-user show --query id -o tsv
+.\scripts\fix-keyvault-access.ps1 -KeyVaultName "kv-yourproject-prod" -UserObjectId $objectId
+```
+
+**Alternative: Verify you have proper RBAC roles:**
+- Verify you have `Reader` + `Key Vault Secrets User` roles
+- Check if Key Vault uses RBAC (not legacy access policies)
 - Verify you have `Reader` + `Key Vault Secrets User` roles
 - Check if Key Vault uses RBAC (not legacy access policies)
 
