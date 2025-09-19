@@ -1,105 +1,53 @@
-# telephony channel for Copilot Studio via Azure Communication Services
+# Telephony Channel for Copilot Studio via Azure Communication Services
 
 ## Overview
 
-This project showcases a telephony integration between **Azure Communication Services (ACS)** and **Microsoft Copilot Studio (MCS)** virtual agents. 
-The application creates a voice-based customer service experience by:
+Transform your Microsoft Copilot Studio agents into voice-capable assistants that can handle phone calls through Azure Communication Services. Enable natural voice conversations with AI using real-time speech transcription and synthesis.
 
-1. Accepting incoming phone calls through ACS
-2. Converting speech to text using real-time transcription
-3. Sending the transcribed content to a Copilot Studio agent via the Direct Line API
-4. Transforming the agent's responses into spoken audio using SSML (Speech Synthesis Markup Language)
-5. Delivering the synthesized speech back to the caller
-6. Transfer the call to an external phone number
-7. Monitoring endpoints (secured)
-8. Swagger interface (secured when running in Development Mode, disable in Production Mode)
+[Listen to Sample Call](https://github.com/user-attachments/assets/c3f3c304-f743-4eb3-9f28-dd22338489c1) | [Complete Documentation](https://github.com/holgerimbery/ACSforMCS/wiki)
 
+## Quick Start
 
-This solution provides an alternative communication channel for Copilot Studio agents.
-enabling organizations to extend their conversational AI capabilities to traditional phone systems
-while leveraging the natural language understanding and dialog management features of Microsoft Copilot Studio.
+### New Users
+**Start here if you're new to the project:**
+1. **[Understand the Project](https://github.com/holgerimbery/ACSforMCS/wiki/Project-Purpose)** - Learn what this does and if it fits your needs
 
+1. [![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://github.com/holgerimbery/ACSforMCS/wiki/Quick-Installation) - One-click Azure deployment with helping step-by-step kickstarter
+2. **[Release Package Quick Reference](https://github.com/holgerimbery/ACSforMCS/wiki/Release-Package-Quick-Reference)** - Command-line deployment
 
-https://github.com/user-attachments/assets/c3f3c304-f743-4eb3-9f28-dd22338489c1
-
-## Documentation of the Project
-[Project Wiki](https://github.com/holgerimbery/ACSforMCS/wiki)
-
-## Quick Start Deployment
-
-### Essential Requirements (local machine)
-- PowerShell 7.0 or Later   
-Download from: https://github.com/PowerShell/PowerShell/releases
-
-- Azure CLI   
-Must be installed and authenticated
-Install from: https://docs.microsoft.com/en-us/cli/azure/install-azure-cli   
-Must run az login before using scripts
-
-- Azure Permissions   
-Contributor or Owner role on the Azure subscription/resource group   
-Key Vault access permissions (get, list, set secrets)   
-Web App deployment permissions   
-
-### Option 1: One-Click Azure Deployment (Recommended)
-Deploy everything with an interactive Azure Portal interface:
-
-[![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Fholgerimbery%2FACSforMCS%2Fmain%2Fazuredeploy.json/createUIDefinitionUri/https%3A%2F%2Fraw.githubusercontent.com%2Fholgerimbery%2FACSforMCS%2Fmain%2FcreateUiDefinition.json)
-
-**Post-deployment steps:**
-1. **Configure additional components** (see [Wiki](https://github.com/holgerimbery/ACSforMCS/wiki) for detailed guides):
-   - [Phone number configuration and setup](https://github.com/holgerimbery/ACSforMCS/wiki/Prerequisites-and-Setup#3-azure-communication-services-acs)
-   - [Copilot Studio agent configuration](https://github.com/holgerimbery/ACSforMCS/wiki/Prerequisites-and-Setup#5-microsoft-copilot-studio)
-   - [Complete deployment and environment management](https://github.com/holgerimbery/ACSforMCS/wiki/Azure-Web-App-Deployment)
-2. Download the latest [release package](https://github.com/holgerimbery/ACSforMCS/releases)
-3. Extract and run `.\setup-configuration.ps1` to configure phone number and DirectLine secret
-4. Run `.\deploy-application.ps1` to deploy your application code
-
-### Option 2: New Projects (Automated Setup)
-For new projects without existing Azure resources, use our automated setup:
-
-```powershell
-# 1. Download and extract the latest release package
-# 2. Create all Azure resources automatically
-.\scripts\create-azure-resources.ps1 -ApplicationName "myproject"
-
-# 3. Populate Key Vault secrets interactively  
-.\scripts\populate-keyvault-secrets.ps1 -KeyVaultName "kv-myproject-prod"
-
-# 4. Deploy the application
-.\scripts\deploy-application.ps1
-```
-
-### Option 3: Existing Azure Resources
-If you already have Azure resources configured:
-
-- Download the latest [release package](https://github.com/holgerimbery/ACSforMCS/releases)
-
-- **Configure additional components** (see [Wiki](https://github.com/holgerimbery/ACSforMCS/wiki) for detailed guides):
-   - [Phone number configuration and setup](https://github.com/holgerimbery/ACSforMCS/wiki/Prerequisites-and-Setup#3-azure-communication-services-acs)
-   - [Copilot Studio agent configuration](https://github.com/holgerimbery/ACSforMCS/wiki/Prerequisites-and-Setup#5-microsoft-copilot-studio)
-   - [Complete deployment and environment management](https://github.com/holgerimbery/ACSforMCS/wiki/Azure-Web-App-Deployment)
-
-```powershell
-# Configure application with existing resources
-.\scripts\setup-configuration.ps1 -KeyVaultName "your-keyvault-name"
-```
+### Developers
+**Complete development workflow:**
+- **[Azure Development Guide](https://github.com/holgerimbery/ACSforMCS/wiki/Azure-Development)** - Primary development environment
+- **[Code Documentation](https://github.com/holgerimbery/ACSforMCS/wiki/Code-Documentation)** - Technical implementation details
+- **[Local Development](https://github.com/holgerimbery/ACSforMCS/wiki/Local-Development)** - Optional local testing
 
 
-```powershell
-# Deploy the application
-.\scripts\deploy-application.ps1
-```
+## Key Features
 
-** Complete deployment guides:**
-- **[Release Package Quick Reference](https://github.com/holgerimbery/ACSforMCS/wiki/Release-Package-Quick-Reference)** - Step-by-step commands for fast deployment
-- **[Release Package Deployment Guide](https://github.com/holgerimbery/ACSforMCS/wiki/Release-Package-Deployment)** - Comprehensive guide with detailed explanations
+- **Voice-enabled AI conversations** through standard phone calls
+- **Real-time speech transcription** using Azure Cognitive Services  
+- **Natural text-to-speech** responses with SSML support
+- **Call transfer capabilities** to human agents
+- **Secure configuration** with Azure Key Vault integration
+- **Production monitoring** with health checks and metrics
+- **Cloud-native deployment** on Azure Web Apps
 
+## Documentation
 
-## Credits and Acknowledgments
-This project is based on and inspired by architectural samples and technical guidance provided by Microsoft. We extend our gratitude to the Microsoft engineering teams for their comprehensive documentation and sample code that served as the foundation for this integration. The approach showcased here leverages best practices recommended by Microsoft for connecting Azure Communication Services with conversational AI platforms like Copilot Studio. Special thanks to the Azure Communication Services and Microsoft Copilot Studio product teams for their excellent technical resources that made this implementation possible.
+All detailed guides are in the [Project Wiki](https://github.com/holgerimbery/ACSforMCS/wiki):
 
-     
-## Want to Contribute?
-Helping hands are welcome to enhance this telephony integration capability. If you're interested in contributing, please reach out to us with your ideas and PRs. 
+| Guide | Purpose |
+|-------|---------|
+| [Project Purpose](https://github.com/holgerimbery/ACSforMCS/wiki/Project-Purpose) | Understand the solution and use cases |
+| [Quick Installation](https://github.com/holgerimbery/ACSforMCS/wiki/Quick-Installation) | Deploy to Azure in minutes |
+| [Copilot Studio Integration](https://github.com/holgerimbery/ACSforMCS/wiki/Copilot-Studio-Integration) | Configure your bot agents |
+| [Azure Development](https://github.com/holgerimbery/ACSforMCS/wiki/Azure-Development) | Complete development workflow |
+
+## Contributing
+
+Contributions welcome! Please check our [issues](https://github.com/holgerimbery/ACSforMCS/issues) or reach out with ideas and PRs.
+
+## Acknowledgments
+
+Built with Microsoft Azure Communication Services and Copilot Studio. Thanks to Microsoft engineering teams for excellent documentation and samples that made this integration possible. 
 
