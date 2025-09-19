@@ -111,6 +111,29 @@
         public bool HasCalleeInfo { get; set; } = false;
 
         /// <summary>
+        /// The DTMF (Dual-Tone Multi-Frequency) sequence recognized during the call.
+        /// 
+        /// This contains the sequence of digits, stars (*), and pounds (#) that the caller
+        /// has pressed on their phone keypad during the call. Can be used for:
+        /// - Interactive voice response (IVR) navigation
+        /// - Authentication or PIN entry
+        /// - Menu selections and routing decisions
+        /// - Customer input collection
+        /// 
+        /// Each DTMF tone is appended to this string as it is detected during the call.
+        /// The sequence is preserved for the duration of the call for analysis and routing.
+        /// </summary>
+        public string? DtmfSequence { get; set; }
+
+        /// <summary>
+        /// Indicates whether DTMF tones have been detected during this call.
+        /// 
+        /// True when at least one DTMF tone has been recognized and stored in DtmfSequence.
+        /// Used to determine if DTMF-based routing or interaction logic should be applied.
+        /// </summary>
+        public bool HasDtmfInput { get; set; } = false;
+
+        /// <summary>
         /// The timestamp when the call was initiated or when this context was created.
         /// 
         /// Used for:
@@ -172,7 +195,8 @@
         /// Gets a summary of the call context data quality and completeness.
         /// 
         /// Returns:
-        /// - "complete": Both caller and callee information available
+        /// - "complete": Both caller and callee information available with DTMF input
+        /// - "enhanced": Both caller and callee information available
         /// - "partial": Either caller or callee information available
         /// - "minimal": No caller/callee information available
         /// 
@@ -180,8 +204,10 @@
         /// </summary>
         public string GetDataQuality()
         {
-            if (HasCallerInfo && HasCalleeInfo)
+            if (HasCallerInfo && HasCalleeInfo && HasDtmfInput)
                 return "complete";
+            if (HasCallerInfo && HasCalleeInfo)
+                return "enhanced";
             if (HasCallerInfo || HasCalleeInfo)
                 return "partial";
             return "minimal";
@@ -193,7 +219,7 @@
         /// Returns a copy of the caller-related fields that can be safely used
         /// without holding locks, preventing deadlocks in multi-threaded scenarios.
         /// </summary>
-        public (string CallerId, string CalleeId, string CallerDisplayName, bool HasCallerInfo, bool HasCalleeInfo, string CallerType) GetCallerInfoSnapshot()
+        public (string CallerId, string CalleeId, string CallerDisplayName, bool HasCallerInfo, bool HasCalleeInfo, string CallerType, string DtmfSequence, bool HasDtmfInput) GetCallerInfoSnapshot()
         {
             lock (Lock)
             {
@@ -203,8 +229,29 @@
                     CallerDisplayName ?? "Anonymous Caller",
                     HasCallerInfo,
                     HasCalleeInfo,
-                    CallerType
+                    CallerType,
+                    DtmfSequence ?? string.Empty,
+                    HasDtmfInput
                 );
+            }
+        }
+
+        /// <summary>
+        /// Adds a DTMF tone to the sequence in a thread-safe manner.
+        /// 
+        /// Call this method when a DTMF tone is detected during the call
+        /// to maintain the complete sequence for routing and interaction logic.
+        /// </summary>
+        /// <param name="dtmfTone">The detected DTMF tone (0-9, *, or #)</param>
+        public void AddDtmfTone(string dtmfTone)
+        {
+            if (string.IsNullOrEmpty(dtmfTone)) return;
+
+            lock (Lock)
+            {
+                DtmfSequence = (DtmfSequence ?? string.Empty) + dtmfTone;
+                HasDtmfInput = true;
+                LastActivity = DateTimeOffset.UtcNow;
             }
         }
     }

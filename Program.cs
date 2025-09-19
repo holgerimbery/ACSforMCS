@@ -755,6 +755,71 @@ app.MapPost("/api/calls/{contextId}", async (
         {
             logger.LogInformation("Transcription stopped: {OperationContext}", transcriptionStopped.OperationContext);
         }
+
+        // Handle DTMF recognition events
+        if (@event is RecognizeCompleted recognizeCompleted)
+        {
+            logger.LogInformation("Recognition completed: {OperationContext}", recognizeCompleted.OperationContext);
+            
+            try
+            {
+                // Extract DTMF information from the recognition result
+                var dtmfInfo = DtmfExtractor.ExtractDtmfFromRecognizeEvent(recognizeCompleted, correlationId, logger);
+                
+                if (dtmfInfo.IsValid)
+                {
+                    // Apply DTMF information to the call context
+                    if (callStore.TryGetValue(correlationId, out var callContext))
+                    {
+                        dtmfInfo.ApplyToCallContext(callContext);
+                        
+                        logger.LogInformation("DTMF tone added to call {CorrelationId}: {DtmfTone}, Complete sequence: {DtmfSequence}", 
+                            correlationId, dtmfInfo.DtmfTone, callContext.DtmfSequence);
+
+                        // Send DTMF information to the bot for processing
+                        if (!string.IsNullOrEmpty(callContext.ConversationId))
+                        {
+                            try
+                            {
+                                var dtmfMessage = $"DTMF_INPUT={dtmfInfo.DtmfTone}|DTMF_SEQUENCE={callContext.DtmfSequence}";
+                                await callAutomationService.SendMessageAsync(callContext.ConversationId, dtmfMessage);
+                                logger.LogInformation("DTMF information sent to bot for call {CorrelationId}: {DtmfMessage}", 
+                                    correlationId, dtmfMessage);
+                            }
+                            catch (Exception ex)
+                            {
+                                logger.LogError(ex, "Failed to send DTMF information to bot for call {CorrelationId}: {Error}", 
+                                    correlationId, ex.Message);
+                            }
+                        }
+                        else
+                        {
+                            logger.LogWarning("No bot conversation available for DTMF processing in call {CorrelationId}", correlationId);
+                        }
+                    }
+                    else
+                    {
+                        logger.LogWarning("Call context not found for DTMF processing in call {CorrelationId}", correlationId);
+                    }
+                }
+                else
+                {
+                    logger.LogDebug("DTMF extraction result for call {CorrelationId}: {Status} - {ErrorMessage}", 
+                        correlationId, dtmfInfo.Status, dtmfInfo.ErrorMessage);
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Error processing DTMF recognition for call {CorrelationId}: {Message}", correlationId, ex.Message);
+            }
+        }
+
+        // Handle recognition failures
+        if (@event is RecognizeFailed recognizeFailed)
+        {
+            logger.LogWarning("Recognition failed for call {CorrelationId}: {OperationContext}, Code: {ResultCode}", 
+                correlationId, recognizeFailed.OperationContext, recognizeFailed.ResultInformation?.Code);
+        }
         
         // Handle call disconnection - clean up resources
         if (@event is CallDisconnected)
@@ -1171,6 +1236,93 @@ if (!string.IsNullOrEmpty(configuredBaseUri))
 }
 
 startupLogger.LogInformation("Application startup configuration complete");
+
+// Development: Simple test endpoint for DTMF functionality verification
+if (app.Environment.IsDevelopment())
+{
+    app.MapGet("/test/dtmf", (ILogger<Program> logger) =>
+    {
+        try
+        {
+            logger.LogInformation("DTMF test endpoint accessed");
+            
+            // Create a test call context
+            var callContext = new CallContext
+            {
+                CorrelationId = "test-12345",
+                CallerId = "+1234567890",
+                CalleeId = "+0987654321",
+                CallerDisplayName = "Test Caller",
+                HasCallerInfo = true,
+                HasCalleeInfo = true
+            };
+
+            // Add some DTMF tones
+            callContext.AddDtmfTone("1");
+            callContext.AddDtmfTone("2");
+            callContext.AddDtmfTone("3");
+            callContext.AddDtmfTone("*");
+            callContext.AddDtmfTone("#");
+
+            // Test DtmfExtractor functionality
+            var validSequence = DtmfExtractor.IsValidDtmfSequence("123*#");
+            var invalidSequence = DtmfExtractor.IsValidDtmfSequence("123ABC");
+            var formattedSequence = DtmfExtractor.FormatDtmfSequence(callContext.DtmfSequence);
+
+            // Test DtmfInfo
+            var dtmfInfo = DtmfExtractor.DtmfInfo.CreateRecognized("test-67890", "5");
+            var errorInfo = DtmfExtractor.DtmfInfo.CreateError("test-67890", "Test error");
+
+            var result = new
+            {
+                message = "DTMF functionality test completed successfully",
+                timestamp = DateTime.UtcNow,
+                callContext = new
+                {
+                    correlationId = callContext.CorrelationId,
+                    dtmfSequence = callContext.DtmfSequence,
+                    hasDtmfInput = callContext.HasDtmfInput,
+                    dataQuality = callContext.GetDataQuality(),
+                    formattedSequence = formattedSequence
+                },
+                validation = new
+                {
+                    validSequence123 = validSequence,
+                    invalidSequenceABC = invalidSequence
+                },
+                dtmfInfo = new
+                {
+                    recognized = new
+                    {
+                        tone = dtmfInfo.DtmfTone,
+                        isValid = dtmfInfo.IsValid,
+                        status = dtmfInfo.Status.ToString()
+                    },
+                    error = new
+                    {
+                        isValid = errorInfo.IsValid,
+                        status = errorInfo.Status.ToString(),
+                        errorMessage = errorInfo.ErrorMessage
+                    }
+                }
+            };
+
+            logger.LogInformation("DTMF test completed - Sequence: {DtmfSequence}, Quality: {DataQuality}", 
+                callContext.DtmfSequence, callContext.GetDataQuality());
+
+            return Results.Ok(result);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error in DTMF test endpoint: {Message}", ex.Message);
+            return Results.Problem("Error testing DTMF functionality: " + ex.Message);
+        }
+    })
+    .WithName("TestDtmfFunctionality")
+    .WithTags("Testing", "DTMF")
+    .WithSummary("Test DTMF functionality (Development only)")
+    .WithDescription("Tests DTMF recognition and processing functionality without requiring ACS connection");
+}
 
 // Start the application and begin listening for requests
 app.Run();
