@@ -5,6 +5,13 @@ All notable changes to ACS for MCS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.7.0] - 2025-09-19
+
+### Added
+- Enhanced caller identification with precise CallerID and CalleeID detection
+- Completely restructured wiki documentation organized by user journeys
+- One-click "Deploy to Azure" button that automatically provisions all required Azure resources
+
 ## [v0.6.2] - 2025-09-17 
 
 ### Added
